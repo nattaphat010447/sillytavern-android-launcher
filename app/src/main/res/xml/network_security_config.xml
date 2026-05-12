@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Allow cleartext HTTP to loopback addresses only (127.0.0.1 / ::1).
+    Required so OkHttp can health-check ST on http://127.0.0.1:8000/
+    and so the WebView can load the ST page.
+    All other traffic still requires TLS.
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+</network-security-config>

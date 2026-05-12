@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!--
+        STANDROID Dark Purple Theme
+        Parent: Theme.MaterialComponents.DayNight.NoActionBar
+        Force dark mode only — no light variant needed.
+    -->
+    <style name="Theme.STAndroid" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+
+        <!-- ── Color system ──────────────────────────────────────────── -->
+        <item name="colorPrimary">@color/purple_500</item>
+        <item name="colorPrimaryVariant">@color/purple_700</item>
+        <item name="colorOnPrimary">@color/text_primary</item>
+
+        <item name="colorSecondary">@color/pink_accent</item>
+        <item name="colorSecondaryVariant">@color/pink_light</item>
+        <item name="colorOnSecondary">@color/text_primary</item>
+
+        <item name="colorSurface">@color/bg_surface</item>
+        <item name="colorOnSurface">@color/text_primary</item>
+
+        <item name="android:colorBackground">@color/bg_deep</item>
+        <item name="colorOnBackground">@color/text_primary</item>
+
+        <item name="colorError">@color/error_red</item>
+        <item name="colorOnError">@color/text_primary</item>
+
+        <!-- ── System bars ────────────────────────────────────────────── -->
+        <item name="android:statusBarColor">@color/bg_deep</item>
+        <item name="android:navigationBarColor">@color/bg_deep</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+
+        <!-- ── Window ─────────────────────────────────────────────────── -->
+        <item name="android:windowBackground">@color/bg_deep</item>
+        <item name="android:windowAnimationStyle">@style/WindowAnimation.Fade</item>
+
+        <!-- ── Typography ─────────────────────────────────────────────── -->
+        <item name="android:textColorPrimary">@color/text_primary</item>
+        <item name="android:textColorSecondary">@color/text_muted</item>
+        <item name="android:textColorHint">@color/text_disabled</item>
+
+        <!-- ── MaterialButton defaults ────────────────────────────────── -->
+        <item name="materialButtonStyle">@style/Widget.STANDROID.Button</item>
+        <item name="materialButtonOutlinedStyle">@style/Widget.STANDROID.Button.Outlined</item>
+
+        <!-- ── MaterialCardView defaults ──────────────────────────────── -->
+        <item name="materialCardViewStyle">@style/Widget.STANDROID.CardView</item>
+
+        <!-- ── Shape ──────────────────────────────────────────────────── -->
+        <item name="shapeAppearanceSmallComponent">@style/ShapeAppearance.STANDROID.Small</item>
+        <item name="shapeAppearanceMediumComponent">@style/ShapeAppearance.STANDROID.Medium</item>
+        <item name="shapeAppearanceLargeComponent">@style/ShapeAppearance.STANDROID.Large</item>
+
+    </style>
+
+    <!-- ── Window animations ──────────────────────────────────────────── -->
+    <style name="WindowAnimation.Fade" parent="@android:style/Animation.Activity">
+        <item name="android:activityOpenEnterAnimation">@android:anim/fade_in</item>
+        <item name="android:activityOpenExitAnimation">@android:anim/fade_out</item>
+        <item name="android:activityCloseEnterAnimation">@android:anim/fade_in</item>
+        <item name="android:activityCloseExitAnimation">@android:anim/fade_out</item>
+    </style>
+
+    <!-- ── Shape appearances ──────────────────────────────────────────── -->
+    <style name="ShapeAppearance.STANDROID.Small" parent="ShapeAppearance.MaterialComponents.SmallComponent">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">12dp</item>
+    </style>
+
+    <style name="ShapeAppearance.STANDROID.Medium" parent="ShapeAppearance.MaterialComponents.MediumComponent">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">16dp</item>
+    </style>
+
+    <style name="ShapeAppearance.STANDROID.Large" parent="ShapeAppearance.MaterialComponents.LargeComponent">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">20dp</item>
+    </style>
+
+    <!-- ── Button styles ──────────────────────────────────────────────── -->
+    <style name="Widget.STANDROID.Button" parent="Widget.MaterialComponents.Button">
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="backgroundTint">@color/purple_500</item>
+        <item name="cornerRadius">16dp</item>
+        <item name="android:paddingTop">14dp</item>
+        <item name="android:paddingBottom">14dp</item>
+        <item name="android:letterSpacing">0.04</item>
+        <item name="android:textStyle">bold</item>
+        <item name="rippleColor">@color/purple_glow</item>
+    </style>
+
+    <style name="Widget.STANDROID.Button.Outlined" parent="Widget.MaterialComponents.Button.OutlinedButton">
+        <item name="android:textColor">@color/purple_glow</item>
+        <item name="strokeColor">@color/purple_500</item>
+        <item name="strokeWidth">1.5dp</item>
+        <item name="cornerRadius">16dp</item>
+        <item name="android:paddingTop">14dp</item>
+        <item name="android:paddingBottom">14dp</item>
+        <item name="rippleColor">@color/purple_glow</item>
+    </style>
+
+    <style name="Widget.STANDROID.Button.Text" parent="Widget.MaterialComponents.Button.TextButton">
+        <item name="android:textColor">@color/text_muted</item>
+        <item name="cornerRadius">16dp</item>
+        <item name="rippleColor">@color/purple_glow</item>
+    </style>
+
+    <!-- ── CardView style ─────────────────────────────────────────────── -->
+    <style name="Widget.STANDROID.CardView" parent="Widget.MaterialComponents.CardView">
+        <item name="cardBackgroundColor">@color/bg_surface</item>
+        <item name="cardCornerRadius">20dp</item>
+        <item name="cardElevation">4dp</item>
+        <item name="strokeColor">@color/bg_card_stroke</item>
+        <item name="strokeWidth">1dp</item>
+    </style>
+
+    <!-- ── Legacy alias (used in AndroidManifest) ─────────────────────── -->
+    <style name="Theme.STAndroid.NoActionBar" parent="Theme.STAndroid" />
+
+    <!--
+        Splash screen theme — applied to MainActivity only.
+        The SplashScreen API shows this while the process is starting,
+        then hands off to Theme.STAndroid once onCreate() calls
+        installSplashScreen().
+    -->
+    <style name="Theme.STAndroid.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/bg_deep</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher</item>
+        <item name="postSplashScreenTheme">@style/Theme.STAndroid</item>
+    </style>
+
+</resources>

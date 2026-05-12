@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ── STANDROID Dark Purple Palette ─────────────────────────────── -->
+
+    <!-- Backgrounds -->
+    <color name="bg_deep">#0A0514</color>
+    <color name="bg_surface">#1A0F2E</color>
+    <color name="bg_elevated">#251944</color>
+    <color name="bg_card_stroke">#3D2B6B</color>
+
+    <!-- Purple accent -->
+    <color name="purple_glow">#B388FF</color>
+    <color name="purple_500">#7C4DFF</color>
+    <color name="purple_300">#9E7BFF</color>
+    <color name="purple_200">#C5A8FF</color>
+    <color name="purple_700">#5E35B1</color>
+
+    <!-- Pink accent (gradient end) -->
+    <color name="pink_accent">#E040FB</color>
+    <color name="pink_light">#F48FB1</color>
+
+    <!-- Text -->
+    <color name="text_primary">#F3E9FF</color>
+    <color name="text_secondary">#C5A8FF</color>
+    <color name="text_muted">#A594CC</color>
+    <color name="text_disabled">#5C4E7A</color>
+
+    <!-- Status -->
+    <color name="status_running">#69F0AE</color>
+    <color name="status_stopped">#FF6E6E</color>
+    <color name="status_loading">#FFD740</color>
+
+    <!-- Utility -->
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+    <color name="transparent">#00000000</color>
+    <color name="overlay_scrim">#80000000</color>
+    <color name="error_red">#CF6679</color>
+
+    <!-- Legacy aliases (keep for compatibility) -->
+    <color name="teal_200">#FF03DAC5</color>
+    <color name="teal_700">#FF018786</color>
+</resources>

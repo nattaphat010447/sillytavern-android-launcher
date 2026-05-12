@@ -1,0 +1,55 @@
+Copyright (c) 2026 nattaphat010447. All rights reserved.
+
+STANDROID Proprietary Source-Available License
+
+1. GRANT OF RIGHTS
+
+   Subject to the terms of this License, the copyright holder grants you a
+   limited, non-exclusive, non-transferable, revocable right to:
+
+   (a) view and inspect the source code for personal, educational, or
+       transparency purposes; and
+   (b) compile and run the software solely for personal, non-commercial use
+       on your own devices.
+
+2. RESTRICTIONS
+
+   You may NOT, without prior written permission from the copyright holder:
+
+   (a) copy, reproduce, or duplicate the source code or any substantial
+       portion thereof;
+   (b) modify, adapt, translate, or create derivative works based on the
+       source code;
+   (c) distribute, sublicense, sell, rent, lease, or otherwise transfer the
+       source code or any compiled form to any third party;
+   (d) use the source code or any portion thereof to build a competing
+       product or service;
+   (e) remove or alter any copyright, trademark, or proprietary notices.
+
+3. ATTRIBUTION
+
+   Any permitted reference to this software must include clear attribution
+   to the original author: nattaphat010447
+   (https://github.com/nattaphat010447/sillytavern-android-launcher)
+
+4. THIRD-PARTY COMPONENTS
+
+   This software downloads and runs SillyTavern (https://github.com/SillyTavern/SillyTavern)
+   at runtime. SillyTavern is a separate project licensed under AGPL-3.0.
+   This License does not grant any rights to SillyTavern's source code.
+
+5. DISCLAIMER OF WARRANTIES
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+   OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT.
+   IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES,
+   OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE,
+   ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+   OTHER DEALINGS IN THE SOFTWARE.
+
+6. TERMINATION
+
+   This License is automatically terminated if you violate any of its terms.
+   Upon termination, you must destroy all copies of the source code in your
+   possession.

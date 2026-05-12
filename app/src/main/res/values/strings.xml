@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">STANDROID</string>
+    <string name="notification_channel_name">SillyTavern Server</string>
+    <string name="notification_channel_desc">Shows SillyTavern server status</string>
+    <string name="notif_title_running">SillyTavern is running</string>
+    <string name="notif_text_running">Tap to open · localhost:8000</string>
+    <string name="notif_title_stopped">SillyTavern stopped</string>
+    <string name="notif_text_stopped">Tap to restart</string>
+    <string name="btn_start">Start</string>
+    <string name="btn_stop">Stop</string>
+    <string name="btn_restart">Restart</string>
+    <string name="setup_title">Setting up SillyTavern…</string>
+    <string name="setup_step_downloading">Downloading SillyTavern…</string>
+    <string name="setup_step_extracting">Extracting files…</string>
+    <string name="setup_step_installing">Installing dependencies…</string>
+    <string name="setup_step_done">Done! Starting server…</string>
+    <string name="error_no_internet">No internet connection. Please connect and try again.</string>
+    <string name="error_download_failed">Download failed. Tap to retry.</string>
+    <string name="error_install_failed">Dependency install failed. Tap to retry.</string>
+    <string name="error_server_timeout">Server did not start within 60 seconds.</string>
+    <string name="perm_rationale_notifications">STANDROID needs notification permission to show SillyTavern server status in the background.</string>
+</resources>

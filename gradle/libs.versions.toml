@@ -1,0 +1,32 @@
+[versions]
+agp            = "8.6.0"
+kotlin         = "2.0.21"
+coreKtx        = "1.15.0"
+appcompat      = "1.7.0"
+material       = "1.12.0"
+activity       = "1.9.3"
+constraintlayout = "2.2.0"
+lifecycleRuntime = "2.8.7"
+okhttp         = "4.12.0"
+coroutines     = "1.9.0"
+nodejsMobile   = "0.4.3"
+swiperefreshlayout = "1.1.0"
+splashscreen   = "1.0.1"
+
+[libraries]
+androidx-core-ktx            = { group = "androidx.core",               name = "core-ktx",            version.ref = "coreKtx"          }
+androidx-appcompat           = { group = "androidx.appcompat",           name = "appcompat",           version.ref = "appcompat"         }
+jgit                         = { group = "org.eclipse.jgit",             name = "org.eclipse.jgit",    version = "6.9.0.202403050737-r" }
+material                     = { group = "com.google.android.material",  name = "material",            version.ref = "material"          }
+androidx-activity            = { group = "androidx.activity",            name = "activity-ktx",        version.ref = "activity"          }
+androidx-constraintlayout    = { group = "androidx.constraintlayout",    name = "constraintlayout",    version.ref = "constraintlayout"  }
+androidx-lifecycle-runtime   = { group = "androidx.lifecycle",           name = "lifecycle-runtime-ktx",version.ref = "lifecycleRuntime" }
+okhttp                       = { group = "com.squareup.okhttp3",         name = "okhttp",              version.ref = "okhttp"            }
+kotlinx-coroutines-android   = { group = "org.jetbrains.kotlinx",       name = "kotlinx-coroutines-android", version.ref = "coroutines" }
+nodejs-mobile                = { group = "com.janeasystems.rn_nodejs_mobile", name = "nodejs-mobile-android", version.ref = "nodejsMobile" }
+androidx-swiperefreshlayout  = { group = "androidx.swiperefreshlayout",       name = "swiperefreshlayout",   version.ref = "swiperefreshlayout" }
+androidx-splashscreen        = { group = "androidx.core",                      name = "core-splashscreen",    version.ref = "splashscreen"       }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp"    }
+kotlin-android      = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }

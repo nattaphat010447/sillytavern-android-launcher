@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- Exclude runtime files that should not be backed up -->
+    <exclude domain="file" path="SillyTavern/" />
+    <exclude domain="file" path="node/" />
+</full-backup-content>

@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_gradient_main"
+    tools:context=".ui.MainActivity">
+
+    <!-- ── Hero section ──────────────────────────────────────────────── -->
+
+    <!-- Logo circle with glow ring -->
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/cardLogo"
+        android:layout_width="120dp"
+        android:layout_height="120dp"
+        android:layout_marginTop="72dp"
+        app:cardCornerRadius="60dp"
+        app:cardBackgroundColor="@color/bg_elevated"
+        app:strokeColor="@color/purple_500"
+        app:strokeWidth="2dp"
+        app:cardElevation="12dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/tvAppName"
+        app:layout_constraintVertical_chainStyle="packed">
+
+        <ImageView
+            android:layout_width="80dp"
+            android:layout_height="80dp"
+            android:layout_gravity="center"
+            android:src="@drawable/ic_launcher"
+            android:contentDescription="STANDROID logo" />
+
+    </com.google.android.material.card.MaterialCardView>
+
+    <!-- App name -->
+    <TextView
+        android:id="@+id/tvAppName"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="20dp"
+        android:text="STANDROID"
+        android:textColor="@color/text_primary"
+        android:textSize="32sp"
+        android:textStyle="bold"
+        android:letterSpacing="0.12"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/cardLogo"
+        app:layout_constraintBottom_toTopOf="@id/tvTagline" />
+
+    <!-- Tagline -->
+    <TextView
+        android:id="@+id/tvTagline"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="SillyTavern on Android"
+        android:textColor="@color/text_muted"
+        android:textSize="13sp"
+        android:letterSpacing="0.06"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/tvAppName"
+        app:layout_constraintBottom_toTopOf="@id/tvStatus" />
+
+    <!-- Status pill -->
+    <TextView
+        android:id="@+id/tvStatus"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:paddingStart="14dp"
+        android:paddingEnd="14dp"
+        android:paddingTop="6dp"
+        android:paddingBottom="6dp"
+        android:text="● Ready to launch"
+        android:textColor="@color/purple_glow"
+        android:textSize="13sp"
+        android:background="@drawable/bg_status_pill"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/tvTagline"
+        app:layout_constraintBottom_toTopOf="@id/btnStart" />
+
+    <!-- ── Action buttons ────────────────────────────────────────────── -->
+
+    <!-- Start button (gradient) -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnStart"
+        android:layout_width="0dp"
+        android:layout_height="60dp"
+        android:layout_marginTop="40dp"
+        android:layout_marginStart="32dp"
+        android:layout_marginEnd="32dp"
+        android:text="START SILLYTAVERN"
+        android:textSize="15sp"
+        android:textStyle="bold"
+        android:letterSpacing="0.06"
+        android:visibility="gone"
+        android:background="@drawable/btn_primary_gradient"
+        android:textColor="@color/text_primary"
+        app:icon="@android:drawable/ic_media_play"
+        app:iconGravity="textStart"
+        app:iconTint="@color/text_primary"
+        app:cornerRadius="16dp"
+        app:layout_constraintBottom_toTopOf="@id/btnSettings"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/tvStatus" />
+
+    <!-- Settings button (outlined) -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnSettings"
+        style="@style/Widget.STANDROID.Button.Outlined"
+        android:layout_width="0dp"
+        android:layout_height="56dp"
+        android:layout_marginTop="12dp"
+        android:layout_marginStart="32dp"
+        android:layout_marginEnd="32dp"
+        android:text="SETTINGS"
+        android:textSize="14sp"
+        android:visibility="gone"
+        app:icon="@android:drawable/ic_menu_preferences"
+        app:iconGravity="textStart"
+        app:layout_constraintBottom_toTopOf="@id/tvCredit"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/btnStart" />
+
+    <!-- ── Footer ────────────────────────────────────────────────────── -->
+    <TextView
+        android:id="@+id/tvCredit"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="24dp"
+        android:text="Powered by Nutho"
+        android:textColor="@color/text_disabled"
+        android:textSize="11sp"
+        android:letterSpacing="0.04"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>
