@@ -1,5 +1,56 @@
 # STANDROID
 
+**รัน SillyTavern บน Android — โดยไม่ต้องใช้ Termux**
+
+STANDROID คือแอปสำหรับ Android ที่ดาวน์โหลด ติดตั้ง และรัน [SillyTavern](https://github.com/SillyTavern/SillyTavern) ให้อัตโนมัติ
+เปิดแอป กด **Start** แล้ว SillyTavern จะพร้อมใช้งานผ่าน WebView แบบเต็มจอ
+
+---
+
+## ฟีเจอร์
+
+- **ติดตั้งอัตโนมัติ** — clone SillyTavern จาก GitHub และติดตั้ง npm dependencies ในครั้งแรก
+- **นำเข้า / ส่งออก** — กู้คืนจากไฟล์ `.zip` สำรองข้อมูลที่มีอยู่
+- **รันอยู่เบื้องหลัง** — SillyTavern ยังทำงานต่อเมื่อสลับแอป
+- **WebView เต็มจอ** — รองรับ JS, localStorage และอัปโหลดไฟล์ครบ
+- **ควบคุมผ่านการแจ้งเตือน** — หยุด / รีสตาร์ท server จาก notification shade
+- **อัปเดตอัตโนมัติ** — ตรวจสอบอัปเดตผ่าน git ทุกครั้งที่เปิดแอป (ปิดได้)
+- **ตั้งค่าได้** — กำหนด port, toggle auto-update และตัวเลือกขั้นสูง
+- **กู้คืนจาก crash** — รีสตาร์ท server อัตโนมัติสูงสุด 3 ครั้งเมื่อเกิดข้อผิดพลาด
+
+## ความต้องการของระบบ
+
+- Android 13 ขึ้นไป (API 33)
+- พื้นที่ว่างประมาณ 1 GB (SillyTavern + node_modules)
+- การเชื่อมต่ออินเทอร์เน็ตในการเปิดใช้งานครั้งแรก
+
+## วิธีติดตั้ง
+
+1. ดาวน์โหลด APK ล่าสุดจาก [Releases](../../releases)
+2. เปิดใช้งาน **ติดตั้งแอปจากแหล่งที่ไม่รู้จัก** ในเบราว์เซอร์หรือตัวจัดการไฟล์
+3. เปิดไฟล์ APK แล้วติดตั้ง
+4. เปิด STANDROID — การตั้งค่าจะเริ่มต้นอัตโนมัติ
+
+### ควรเลือก APK ไหน?
+
+เนื่องจาก STANDROID ต้องการ Android 13+ เครื่องที่รองรับเกือบทั้งหมดใช้สถาปัตยกรรม **arm64-v8a**
+
+| ไฟล์ APK | เหมาะกับ |
+|----------|----------|
+| ⭐ **`standroid-arm64-v8a-*.apk`** | Android phone ส่วนใหญ่ (ปี 2019+) — **เลือกอันนี้ถ้าไม่แน่ใจ** |
+| `standroid-armeabi-v7a-*.apk` | เครื่องเก่า 32-bit (หายาก) |
+| `standroid-universal-*.apk` | ใช้ได้กับทุกเครื่อง แต่ขนาดใหญ่กว่า (~60 MB) |
+
+> **ไม่รู้จะเลือกอะไร?** ดาวน์โหลด `universal` — ติดตั้งได้กับทุกเครื่องแน่นอน
+
+> **Play Store?** ยังไม่มีแผนในตอนนี้ ลักษณะของ SillyTavern ทำให้การอนุมัติจาก Google Play ไม่แน่นอน การ sideload ผ่าน GitHub เป็นวิธีหลักในการแจกจ่าย
+
+---
+
+---
+
+# STANDROID
+
 **Run SillyTavern on Android — no Termux required.**
 
 STANDROID is an Android launcher that automatically downloads, installs, and runs
@@ -32,14 +83,17 @@ Open the app, tap **Start**, and SillyTavern is accessible through a full-screen
 3. Open the APK and install
 4. Launch STANDROID — setup runs automatically
 
-## Which APK?
+### Which APK should I download?
 
-Since STANDROID requires Android 13+, nearly all compatible devices use
-the **arm64-v8a** architecture. Download the first one if unsure.
+Since STANDROID requires Android 13+, nearly all compatible devices use the **arm64-v8a** architecture.
 
-- ⭐ **`standroid-arm64-v8a-*.apk`** — standard build (~30 MB), works on 99% of Android 13+ devices
-- `standroid-armeabi-v7a-*.apk` — 32-bit build for rare legacy devices
-- `standroid-universal-*.apk` — fat APK with both (~60 MB), guaranteed compatible
+| APK file | Best for |
+|----------|----------|
+| ⭐ **`standroid-arm64-v8a-*.apk`** | Most Android phones (2019+). **Choose this if unsure.** |
+| `standroid-armeabi-v7a-*.apk` | Rare older 32-bit devices |
+| `standroid-universal-*.apk` | Works on any device, but larger (~60 MB) |
+
+> **Not sure?** Download `universal` — it works on every device.
 
 > **Play Store?** Not currently planned. SillyTavern's nature makes Google Play approval
 > uncertain. GitHub sideload is the primary distribution method.
