@@ -32,6 +32,15 @@ Open the app, tap **Start**, and SillyTavern is accessible through a full-screen
 3. Open the APK and install
 4. Launch STANDROID — setup runs automatically
 
+## Which APK?
+
+Since STANDROID requires Android 13+, nearly all compatible devices use
+the **arm64-v8a** architecture. Download the first one if unsure.
+
+- ⭐ **`standroid-arm64-v8a-*.apk`** — standard build (~30 MB), works on 99% of Android 13+ devices
+- `standroid-armeabi-v7a-*.apk` — 32-bit build for rare legacy devices
+- `standroid-universal-*.apk` — fat APK with both (~60 MB), guaranteed compatible
+
 > **Play Store?** Not currently planned. SillyTavern's nature makes Google Play approval
 > uncertain. GitHub sideload is the primary distribution method.
 
