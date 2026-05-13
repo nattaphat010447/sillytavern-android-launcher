@@ -5,6 +5,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.2.0] — 2026-05-13
+
+### Added
+- Live-log dialog for Reinstall Dependencies and Full Reset — shows elapsed timer (M:SS in title), package counter, and color-coded log output in real time
+- Cancel button with confirmation on all long-running operations — cancelling properly kills the Node child process
+- `ThemeOverlay.STANDROID.Dialog` — all `AlertDialog`s now match the dark-purple theme (title in `purple_glow`, dark surface, styled buttons, 20dp corners)
+- `bg_log_panel` drawable — rounded log panel with purple stroke border
+
+### Changed
+- `npm install` now runs with `--loglevel=http` so package downloads stream live to the UI
+- Log line parser rewritten — correctly handles both `http fetch GET 200` (network) and `http cache` (local cache) lines, including scoped packages with `%2f` URL encoding
+- Stats header simplified to package count only (`N packages installed so far`)
+- `SettingsActivity` progress dialog also uses the STANDROID dialog theme
+
+### Fixed
+- Reinstall log previously showed only `GET miss)` for every line due to broken URL parsing (`substringAfterLast(" ")` grabbed the last token instead of the URL)
+- `http cache` lines from npm were silently dropped — most lines when `~/.npm/_cacache` was warm
+
+---
+
 ## [0.1.0] — 2026-05-12
 
 ### Added
