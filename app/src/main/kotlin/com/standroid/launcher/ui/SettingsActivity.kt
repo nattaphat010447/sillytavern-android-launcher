@@ -9,6 +9,8 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.standroid.launcher.R
 import androidx.lifecycle.lifecycleScope
 import com.standroid.launcher.databinding.ActivitySettingsBinding
 import com.standroid.launcher.setup.NpmInstaller
@@ -63,7 +65,7 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun showProgressDialog(title: String, message: String) {
         if (progressDialog == null) {
-            progressDialog = AlertDialog.Builder(this)
+            progressDialog = MaterialAlertDialogBuilder(this, R.style.ThemeOverlay_STANDROID_Dialog)
                 .setTitle(title)
                 .setMessage(message)
                 .setCancelable(false)

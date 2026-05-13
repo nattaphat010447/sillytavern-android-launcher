@@ -119,6 +119,47 @@
     <!-- ── Legacy alias (used in AndroidManifest) ─────────────────────── -->
     <style name="Theme.STAndroid.NoActionBar" parent="Theme.STAndroid" />
 
+    <!-- ── Dialog theme overlay ───────────────────────────────────────── -->
+    <!--
+        Apply to every MaterialAlertDialogBuilder call:
+        MaterialAlertDialogBuilder(ctx, R.style.ThemeOverlay_STANDROID_Dialog)
+    -->
+    <style name="ThemeOverlay.STANDROID.Dialog" parent="ThemeOverlay.MaterialComponents.MaterialAlertDialog">
+        <item name="colorSurface">@color/bg_surface</item>
+        <item name="colorOnSurface">@color/text_primary</item>
+        <item name="android:textColorPrimary">@color/text_primary</item>
+        <item name="android:textColorSecondary">@color/text_muted</item>
+        <item name="materialAlertDialogTitleTextStyle">@style/Text.STANDROID.DialogTitle</item>
+        <item name="materialAlertDialogBodyTextStyle">@style/Text.STANDROID.DialogBody</item>
+        <item name="buttonBarPositiveButtonStyle">@style/Widget.STANDROID.DialogButton.Primary</item>
+        <item name="buttonBarNegativeButtonStyle">@style/Widget.STANDROID.DialogButton.Text</item>
+        <item name="buttonBarNeutralButtonStyle">@style/Widget.STANDROID.DialogButton.Text</item>
+        <item name="dialogCornerRadius">20dp</item>
+    </style>
+
+    <style name="Text.STANDROID.DialogTitle" parent="MaterialAlertDialog.MaterialComponents.Title.Text">
+        <item name="android:textColor">@color/purple_glow</item>
+        <item name="android:textSize">18sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:letterSpacing">0.04</item>
+    </style>
+
+    <style name="Text.STANDROID.DialogBody" parent="MaterialAlertDialog.MaterialComponents.Body.Text">
+        <item name="android:textColor">@color/text_secondary</item>
+        <item name="android:lineSpacingMultiplier">1.4</item>
+    </style>
+
+    <style name="Widget.STANDROID.DialogButton.Primary" parent="Widget.MaterialComponents.Button.TextButton.Dialog">
+        <item name="android:textColor">@color/purple_glow</item>
+        <item name="android:textStyle">bold</item>
+        <item name="rippleColor">@color/purple_500</item>
+    </style>
+
+    <style name="Widget.STANDROID.DialogButton.Text" parent="Widget.MaterialComponents.Button.TextButton.Dialog">
+        <item name="android:textColor">@color/text_muted</item>
+        <item name="rippleColor">@color/purple_500</item>
+    </style>
+
     <!--
         Splash screen theme — applied to MainActivity only.
         The SplashScreen API shows this while the process is starting,

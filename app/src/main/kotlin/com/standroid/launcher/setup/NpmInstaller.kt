@@ -3,8 +3,10 @@ package com.standroid.launcher.setup
 import android.content.Context
 import com.standroid.launcher.service.NodeRunner
 import com.standroid.launcher.util.AppLogger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayInputStream
 import java.io.File
@@ -51,13 +53,13 @@ class NpmInstaller(private val ctx: Context) {
             val args = buildList {
                 add(npmScript)
                 addAll(listOf(
-                    "install", 
-                    "--no-save", 
-                    "--no-audit", 
+                    "install",
+                    "--no-save",
+                    "--no-audit",
                     "--no-fund",
-                    "--loglevel=error", 
-                    "--no-progress", 
-                    "--omit=dev", 
+                    "--loglevel=http",   // emit HTTP fetch lines so UI can show live package downloads
+                    "--no-progress",
+                    "--omit=dev",
                     "--ignore-scripts"
                 ))
             }
@@ -72,7 +74,16 @@ class NpmInstaller(private val ctx: Context) {
                 return@withContext false
             }
 
-            val exitCode = proc.waitFor()
+            // runInterruptible makes proc.waitFor() respond to coroutine cancellation.
+            // If the coroutine is cancelled, the thread is interrupted, waitFor() throws
+            // InterruptedException, and we destroy the process before re-throwing.
+            val exitCode = try {
+                runInterruptible { proc.waitFor() }
+            } catch (e: CancellationException) {
+                proc.destroy()
+                nodeRunner.setLogListener(null)
+                throw e   // propagate so the caller's catch(CancellationException) fires
+            }
             nodeRunner.setLogListener(null)
 
             if (exitCode == 0) {

@@ -6,13 +6,9 @@ import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.ContextCompat
-import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.lifecycleScope
 import com.standroid.launcher.databinding.ActivitySetupBinding
-import com.standroid.launcher.service.STForegroundService
 import com.standroid.launcher.setup.NpmInstaller
 import com.standroid.launcher.setup.STInstaller
 import com.standroid.launcher.util.AppLogger
@@ -40,7 +36,6 @@ class SetupActivity : AppCompatActivity() {
     private val stInstaller  by lazy { STInstaller(this) }
     private val npmInstaller by lazy { NpmInstaller(this) }
 
-    // Using Internal Storage always (No SAF / MANAGE_EXTERNAL_STORAGE needed)
     private val permHelper = com.standroid.launcher.util.Permissions(this) { _ ->
         // Proceed regardless of Notification permission status
     }
@@ -60,15 +55,9 @@ class SetupActivity : AppCompatActivity() {
 
         val stDir = File(filesDir, "SillyTavern")
 
-        // If ST is already installed, show the Export button
-        if (stInstaller.isInstalled(stDir)) {
-            binding.btnExportZip.visibility = View.VISIBLE
-        }
-
         binding.btnDownloadNew.setOnClickListener {
             binding.btnDownloadNew.visibility = View.GONE
             binding.btnImportZip.visibility = View.GONE
-            binding.btnExportZip.visibility = View.GONE
             startSetup(stDir)
         }
 
@@ -80,27 +69,18 @@ class SetupActivity : AppCompatActivity() {
             zipPickerLauncher.launch(intent)
         }
 
-        binding.btnExportZip.setOnClickListener {
-            // TODO: Implement export
-            showError("Export not implemented yet")
-        }
-
         binding.btnRetry.setOnClickListener { startSetup(stDir) }
 
         setupLogAutoScroll()
-
-        // Check permissions early
         permHelper.requestIfNeeded()
     }
 
     private fun importZipAndInstall(uri: Uri) {
         val stDir = File(filesDir, "SillyTavern")
-        
+
         binding.btnDownloadNew.visibility = View.GONE
         binding.btnImportZip.visibility = View.GONE
-        binding.btnExportZip.visibility = View.GONE
         binding.btnRetry.visibility = View.GONE
-        
         binding.progressBar.progress = 0
         appendLog("Importing SillyTavern from ZIP…\n")
 
@@ -110,15 +90,12 @@ class SetupActivity : AppCompatActivity() {
                     stDir.deleteRecursively()
                     stDir.mkdirs()
 
-                    // Try to get total file size for progress calculation
                     val cursor = contentResolver.query(uri, null, null, null, null)
                     var totalSize = 0L
                     cursor?.use {
                         if (it.moveToFirst()) {
                             val sizeIndex = it.getColumnIndex(android.provider.OpenableColumns.SIZE)
-                            if (sizeIndex != -1) {
-                                totalSize = it.getLong(sizeIndex)
-                            }
+                            if (sizeIndex != -1) totalSize = it.getLong(sizeIndex)
                         }
                     }
 
@@ -148,12 +125,9 @@ class SetupActivity : AppCompatActivity() {
                                             while (zis.read(buf).also { n = it } != -1) {
                                                 out.write(buf, 0, n)
                                                 bytesRead += n
-                                                
                                                 if (totalSize > 0) {
-                                                    // Zip compressed size vs uncompressed is tricky, but this gives a rough %
-                                                    // Often total uncompressed size is much larger than zip size, so we'll cap it at 99%
                                                     val pct = Math.min(((bytesRead.toDouble() / (totalSize * 2.5)) * 100).toInt(), 99)
-                                                    if (pct != lastPercent && pct % 2 == 0) { // Update UI every 2%
+                                                    if (pct != lastPercent && pct % 2 == 0) {
                                                         lastPercent = pct
                                                         withContext(Dispatchers.Main) {
                                                             binding.progressBar.isIndeterminate = false
@@ -212,7 +186,6 @@ class SetupActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             runCatching {
-                // ── Step 1: Git Clone ──────────────────────────────────
                 val version = stInstaller.install(destDir = stDir) { step, percent ->
                     runOnUiThread {
                         binding.tvSetupStep.text = step
@@ -248,7 +221,6 @@ class SetupActivity : AppCompatActivity() {
 
     private fun runNpmCiAndFinish(stDir: File) {
         lifecycleScope.launch {
-            // Keep user entertained while waiting
             val loadingMessages = listOf(
                 "Fetching the magic spells...",
                 "Feeding the AI hamsters...",
@@ -266,23 +238,20 @@ class SetupActivity : AppCompatActivity() {
             }
 
             runCatching {
-                // ── Step 2: npm ci ───────────────────────────────────
                 val npmOk = npmInstaller.install(
                     stDir = stDir,
                     onLog = { line ->
-                        // Show raw log output dynamically
-                        lifecycleScope.launch(Dispatchers.Main) { 
-                            appendLog("$line\n") 
+                        lifecycleScope.launch(Dispatchers.Main) {
+                            appendLog("$line\n")
                             binding.tvProgressPercent.text = "Working..."
                         }
                     },
                 )
 
                 hintJob.cancel()
-                
+
                 if (!npmOk) error("npm install failed after all retries")
 
-                // ── Step 3: persist + continue ───────────────────────
                 AppPrefs.isStInstalled = true
                 AppPrefs.stDirPath = stDir.absolutePath
 
@@ -292,7 +261,6 @@ class SetupActivity : AppCompatActivity() {
                 }
 
                 withContext(Dispatchers.Main) {
-                    // Send user back to MainActivity which will now show the Start Server / Settings buttons
                     startActivity(Intent(this@SetupActivity, MainActivity::class.java))
                     finish()
                 }
@@ -307,17 +275,12 @@ class SetupActivity : AppCompatActivity() {
 
     // ── UI helpers ────────────────────────────────────────────────────
 
-    /**
-     * True while the user hasn't manually scrolled up.
-     * Reset to true when they scroll back to the bottom.
-     */
     private var autoScrollLog = true
 
     private fun setupLogAutoScroll() {
         binding.scrollLog.viewTreeObserver.addOnScrollChangedListener {
             val sv = binding.scrollLog
             val child = sv.getChildAt(0) ?: return@addOnScrollChangedListener
-            // Consider "at bottom" if within 8px of the end
             autoScrollLog = sv.scrollY + sv.height >= child.height - 8
         }
     }
