@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.3.0] — 2026-05-20
+
+### Fixed
+- Status bar (clock/battery) overlapping SillyTavern UI on Android 15+ (edge-to-edge enforcement) — fixed using `WindowInsetsCompat` to apply dynamic system bar padding to `WebViewActivity`'s root view; adapts automatically to every device, orientation, notch, and foldable configuration
+- Status bar appearing in system-default color (white/black) on some devices — fixed by wiring the application-level theme in `AndroidManifest.xml` to `Theme.STAndroid` so all activities inherit the dark-purple status bar color (`bg_deep`)
+
+---
+
 ## [0.2.0] — 2026-05-13
 
 ### Added
