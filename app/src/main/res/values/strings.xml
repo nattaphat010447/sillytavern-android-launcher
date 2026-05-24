@@ -20,4 +20,24 @@
     <string name="error_install_failed">Dependency install failed. Tap to retry.</string>
     <string name="error_server_timeout">Server did not start within 60 seconds.</string>
     <string name="perm_rationale_notifications">STANDROID needs notification permission to show SillyTavern server status in the background.</string>
+    
+    <!-- Import User Data -->
+    <string name="import_user_data_title">Import User Data</string>
+    <string name="import_user_data_desc">Import backup from ZIP file (characters, chats, settings)</string>
+    <string name="import_user_data_confirm_title">Import User Data?</string>
+    <string name="import_user_data_confirm_message">This will merge/overwrite your current user data with the backup.\n\nYour existing characters, chats, and settings may be replaced.\n\nMake sure you have a backup if needed.</string>
+    <string name="import_user_data_success">User data imported successfully. Restart SillyTavern to see changes.</string>
+    <string name="import_user_data_failed">Import failed. Please check the ZIP file.</string>
+    <string name="import_user_data_invalid_zip">Invalid backup ZIP. Must contain characters/, chats/, or settings.json</string>
+    
+    <!-- Replace SillyTavern -->
+    <string name="replace_st_title">Replace SillyTavern from ZIP</string>
+    <string name="replace_st_desc">Replace entire installation with your own SillyTavern ZIP</string>
+    <string name="replace_st_confirm_title">Replace SillyTavern?</string>
+    <string name="replace_st_confirm_message">This will:\n1. Optionally back up your current data/\n2. Delete the entire SillyTavern installation\n3. Extract your ZIP file\n4. Run npm install\n\nThis takes 10-20 minutes.\n\nDo you want to back up your data/ first?</string>
+    <string name="replace_st_backup_yes">Yes, backup data</string>
+    <string name="replace_st_backup_no">No backup needed</string>
+    <string name="replace_st_success">SillyTavern replaced successfully.</string>
+    <string name="replace_st_failed">Replace failed. Check logs for details.</string>
+    <string name="replace_st_invalid_zip">Invalid SillyTavern ZIP. Must contain server.js and package.json</string>
 </resources>

@@ -1,11 +1,15 @@
 package com.standroid.launcher.ui
 
+import android.app.Activity
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.text.SpannableStringBuilder
 import android.text.style.ForegroundColorSpan
 import android.view.View
 import android.widget.ScrollView
 import android.widget.TextView
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
@@ -18,6 +22,7 @@ import com.standroid.launcher.setup.NpmInstaller
 import com.standroid.launcher.setup.STInstaller
 import com.standroid.launcher.util.AppLogger
 import com.standroid.launcher.util.AppPrefs
+import com.standroid.launcher.util.ZipExtractor
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -50,6 +55,24 @@ class AdvancedSettingsActivity : AppCompatActivity() {
     private val TAG = "AdvancedSettingsActivity"
     private lateinit var binding: ActivityAdvancedSettingsBinding
 
+    // ── File pickers ──────────────────────────────────────────────────
+
+    private val userDataZipPicker = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            result.data?.data?.let { uri ->
+                doImportUserData(uri)
+            }
+        }
+    }
+
+    private val replaceSillyTavernZipPicker = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            result.data?.data?.let { uri ->
+                askBackupPreference(uri)
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityAdvancedSettingsBinding.inflate(layoutInflater)
@@ -71,6 +94,38 @@ class AdvancedSettingsActivity : AppCompatActivity() {
                     "This may take 5-15 minutes depending on your connection."
                 )
                 .setPositiveButton("Reinstall") { _, _ -> doReinstallDependencies() }
+                .setNegativeButton("Cancel", null)
+                .show()
+        }
+
+        // ── Import User Data ──────────────────────────────────────────
+        binding.rowImportUserData.setOnClickListener {
+            styledDialog()
+                .setTitle(getString(R.string.import_user_data_confirm_title))
+                .setMessage(getString(R.string.import_user_data_confirm_message))
+                .setPositiveButton("Import") { _, _ ->
+                    val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
+                        type = "application/zip"
+                        addCategory(Intent.CATEGORY_OPENABLE)
+                    }
+                    userDataZipPicker.launch(intent)
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        }
+
+        // ── Replace SillyTavern ───────────────────────────────────────
+        binding.rowReplaceSillyTavern.setOnClickListener {
+            styledDialog()
+                .setTitle(getString(R.string.replace_st_confirm_title))
+                .setMessage(getString(R.string.replace_st_confirm_message))
+                .setPositiveButton("Continue") { _, _ ->
+                    val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
+                        type = "application/zip"
+                        addCategory(Intent.CATEGORY_OPENABLE)
+                    }
+                    replaceSillyTavernZipPicker.launch(intent)
+                }
                 .setNegativeButton("Cancel", null)
                 .show()
         }
@@ -438,5 +493,237 @@ class AdvancedSettingsActivity : AppCompatActivity() {
 
         ssb.append(newline)
         return ssb
+    }
+
+    // ── Import User Data ──────────────────────────────────────────────
+
+    private fun doImportUserData(uri: Uri) {
+        val stDir = File(filesDir, "SillyTavern")
+        if (!stDir.exists()) {
+            android.widget.Toast.makeText(this, "SillyTavern is not installed.", android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        if (STForegroundService.isServiceRunning) {
+            startService(STForegroundService.stopIntent(this))
+        }
+
+        val lp = LiveProgressDialog("Import User Data")
+        lp.dialog.show()
+
+        var workJob: Job? = null
+
+        lp.setCancelConfirmation {
+            workJob?.cancel()
+            lp.dialog.dismiss()
+        }
+
+        workJob = lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                // Copy ZIP to temp file
+                val tempZip = File(cacheDir, "user_data_${System.currentTimeMillis()}.zip")
+                lp.appendLog("Reading ZIP file...")
+                contentResolver.openInputStream(uri)?.use { input ->
+                    tempZip.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
+
+                // Extract to temp directory
+                val tempExtract = File(cacheDir, "user_data_extract_${System.currentTimeMillis()}")
+                lp.appendLog("Extracting ZIP...")
+                val extractor = ZipExtractor(this@AdvancedSettingsActivity)
+                val extracted = extractor.extract(tempZip, tempExtract) { msg, _ ->
+                    lp.appendLog(msg)
+                }
+
+                if (!extracted) {
+                    lp.appendLog(getString(R.string.import_user_data_failed))
+                    lp.complete(success = false, finalTitle = "Import Failed")
+                    tempZip.delete()
+                    tempExtract.deleteRecursively()
+                    return@launch
+                }
+
+                // Validate structure
+                if (!extractor.isValidUserDataBackup(tempExtract)) {
+                    lp.appendLog(getString(R.string.import_user_data_invalid_zip))
+                    lp.complete(success = false, finalTitle = "Invalid ZIP")
+                    tempZip.delete()
+                    tempExtract.deleteRecursively()
+                    return@launch
+                }
+
+                // Copy to data/default-user/
+                val defaultUserDir = File(stDir, "data/default-user")
+                lp.appendLog("Merging user data...")
+                val copied = extractor.copyRecursively(tempExtract, defaultUserDir) { msg, _ ->
+                    lp.appendLog(msg)
+                }
+
+                // Cleanup
+                tempZip.delete()
+                tempExtract.deleteRecursively()
+
+                if (copied) {
+                    lp.appendLog(getString(R.string.import_user_data_success))
+                    lp.complete(success = true, finalTitle = "Import Complete")
+                } else {
+                    lp.appendLog(getString(R.string.import_user_data_failed))
+                    lp.complete(success = false, finalTitle = "Import Failed")
+                }
+            } catch (e: CancellationException) {
+                // User cancelled
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "Import user data failed", e)
+                lp.appendLog("Error: ${e.message}")
+                lp.complete(success = false, finalTitle = "Import Failed")
+            }
+        }
+    }
+
+    // ── Replace SillyTavern ───────────────────────────────────────────
+
+    private fun askBackupPreference(uri: Uri) {
+        styledDialog()
+            .setTitle("Backup data?")
+            .setMessage("Do you want to back up your current data/ directory before replacing SillyTavern?")
+            .setPositiveButton(getString(R.string.replace_st_backup_yes)) { _, _ ->
+                doReplaceSillyTavern(uri, backupData = true)
+            }
+            .setNeutralButton(getString(R.string.replace_st_backup_no)) { _, _ ->
+                doReplaceSillyTavern(uri, backupData = false)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun doReplaceSillyTavern(uri: Uri, backupData: Boolean) {
+        val stDir = File(filesDir, "SillyTavern")
+
+        if (STForegroundService.isServiceRunning) {
+            startService(STForegroundService.stopIntent(this))
+        }
+
+        val lp = LiveProgressDialog("Replace SillyTavern")
+        lp.dialog.show()
+
+        var workJob: Job? = null
+
+        lp.setCancelConfirmation {
+            workJob?.cancel()
+            lp.dialog.dismiss()
+        }
+
+        val start = System.currentTimeMillis()
+        val timerJob = lifecycleScope.launch(Dispatchers.Main) {
+            while (isActive) {
+                delay(1000)
+                val secs = (System.currentTimeMillis() - start) / 1000
+                val m = secs / 60; val s = secs % 60
+                lp.setTitle("Replace SillyTavern · $m:${s.toString().padStart(2, '0')}")
+            }
+        }
+
+        workJob = lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                // Backup data/ if requested
+                val backupDir = File(filesDir, "st_data_backup_${System.currentTimeMillis()}")
+                if (backupData) {
+                    val dataDir = File(stDir, "data")
+                    if (dataDir.exists()) {
+                        lp.appendLog("Backing up data/ directory...")
+                        dataDir.copyRecursively(backupDir, overwrite = true)
+                        lp.appendLog("Backup saved.")
+                    }
+                }
+
+                // Copy ZIP to temp file
+                val tempZip = File(cacheDir, "sillytavern_${System.currentTimeMillis()}.zip")
+                lp.appendLog("Reading ZIP file...")
+                contentResolver.openInputStream(uri)?.use { input ->
+                    tempZip.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
+
+                // Delete old SillyTavern
+                lp.appendLog("Deleting old SillyTavern...")
+                stDir.deleteRecursively()
+                stDir.mkdirs()
+
+                // Extract new SillyTavern
+                lp.appendLog("Extracting SillyTavern...")
+                val extractor = ZipExtractor(this@AdvancedSettingsActivity)
+                val extracted = extractor.extract(tempZip, stDir) { msg, _ ->
+                    lp.appendLog(msg)
+                }
+
+                if (!extracted) {
+                    lp.appendLog(getString(R.string.replace_st_failed))
+                    lp.complete(success = false, finalTitle = "Replace Failed")
+                    tempZip.delete()
+                    timerJob.cancel()
+                    return@launch
+                }
+
+                // Validate structure
+                if (!extractor.isValidSillyTavernInstall(stDir)) {
+                    lp.appendLog(getString(R.string.replace_st_invalid_zip))
+                    lp.complete(success = false, finalTitle = "Invalid ZIP")
+                    tempZip.delete()
+                    timerJob.cancel()
+                    return@launch
+                }
+
+                tempZip.delete()
+
+                // Delete node_modules if exists (always reinstall)
+                val nodeModules = File(stDir, "node_modules")
+                if (nodeModules.exists()) {
+                    lp.appendLog("Removing node_modules from ZIP...")
+                    nodeModules.deleteRecursively()
+                }
+
+                // Restore data/ if backed up
+                if (backupDir.exists()) {
+                    lp.appendLog("Restoring data/ directory...")
+                    val newDataDir = File(stDir, "data")
+                    newDataDir.mkdirs()
+                    backupDir.copyRecursively(newDataDir, overwrite = true)
+                    backupDir.deleteRecursively()
+                    lp.appendLog("Data restored.")
+                } else {
+                    // Create empty default-user directory
+                    lp.appendLog("Creating default-user directory...")
+                    File(stDir, "data/default-user").mkdirs()
+                }
+
+                // Run npm install
+                lp.appendLog("Running npm install...")
+                val npmInstaller = NpmInstaller(this@AdvancedSettingsActivity)
+                val ok = npmInstaller.install(
+                    stDir = stDir,
+                    onLog = { raw -> formatNpmLine(raw)?.let { lp.appendLog(it) } }
+                )
+
+                timerJob.cancel()
+
+                if (ok) {
+                    lp.appendLog(getString(R.string.replace_st_success))
+                    lp.complete(success = true, finalTitle = "Replace Complete")
+                } else {
+                    lp.appendLog("Replace done but npm install failed. Try Settings > Check for Updates.")
+                    lp.complete(success = false, finalTitle = "Replace Incomplete")
+                }
+            } catch (e: CancellationException) {
+                timerJob.cancel()
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "Replace SillyTavern failed", e)
+                timerJob.cancel()
+                lp.appendLog("Error: ${e.message}")
+                lp.complete(success = false, finalTitle = "Replace Failed")
+            }
+        }
     }
 }

@@ -5,6 +5,36 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.4.0] — 2026-05-24
+
+### Added
+- **Import User Data** — Import SillyTavern backup ZIP files directly into the app
+  - Extracts and merges user data (characters, chats, settings) into `data/default-user/`
+  - Validates ZIP structure before importing
+  - Real-time progress with detailed logs
+  - Automatically stops server before import
+  - Supports standard SillyTavern backup format (flat structure)
+- **Replace SillyTavern from ZIP** — Replace entire SillyTavern installation with custom ZIP
+  - Optional automatic backup of current `data/` directory
+  - Validates ZIP contains valid SillyTavern (checks for `server.js` and `package.json`)
+  - Always removes `node_modules/` and runs fresh npm install
+  - Restores data after replacement (if backed up)
+  - Creates empty `data/default-user/` if no data exists
+  - Real-time progress with timer and logs
+- **ZipExtractor utility class** — Handles ZIP extraction, validation, and file copying
+  - Extract ZIP files with progress tracking
+  - Validate backup and installation structures
+  - Recursive file copying with overwrite support
+
+### Changed
+- Advanced Settings TROUBLESHOOTING section now has 4 options (was 2):
+  1. Reinstall Dependencies
+  2. Import User Data (new)
+  3. Replace SillyTavern from ZIP (new)
+  4. Full Reset
+
+---
+
 ## [0.3.0] — 2026-05-20
 
 ### Fixed
