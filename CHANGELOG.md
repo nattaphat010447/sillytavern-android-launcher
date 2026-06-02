@@ -5,6 +5,42 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.5.0] — 2026-06-02
+
+### Added
+- **File Download / Export support** — SillyTavern exports now save to device storage via Android's Storage Access Framework
+  - Native file picker dialog lets user choose save location and filename
+  - Supports any download target: Documents, Downloads, Google Drive, SD card, etc.
+  - Handles both blob URLs (character cards, presets) and HTTP URLs
+  - `BlobDownloader` JavaScript interface bridges WebView blob data to Kotlin
+  - `saveFileLauncher` (`ActivityResultContracts.CreateDocument`) drives the SAF save dialog
+- **Blob URL registry** — injected JavaScript captures blob references before they are revoked
+  - Overrides `URL.createObjectURL()` to store blobs in `window.blobRegistry`
+  - Overrides `URL.revokeObjectURL()` to keep registry entries alive for downloads
+  - Overrides `HTMLAnchorElement.prototype.click` to capture `a.download` filename
+  - `HTMLElement.prototype.dispatchEvent` intercept as secondary filename capture
+- **Filename extraction** — multi-strategy pipeline to resolve human-readable filenames
+  - Priority 1: `window.blobFilenames` map (from `a.download` attribute)
+  - Priority 2: `blob.name` property (File objects)
+  - Priority 3: `Content-Disposition` header (RFC 5987 + standard)
+  - Priority 4: `URLUtil.guessFileName` fallback
+  - Priority 5: timestamp-based name from MIME type
+- **WebView console logging** — `WebChromeClient.onConsoleMessage` now routes JS console output to logcat for download debugging
+
+### Fixed
+- SillyTavern Export buttons (character cards, presets, world info, chats) silently did nothing — fixed by registering a `DownloadListener` and injecting the blob registry on `onPageFinished`
+- `TypeError: Failed to fetch` on blob URLs — SillyTavern calls `URL.revokeObjectURL()` immediately after triggering a download; fixed by overriding `revokeObjectURL` to retain the blob in the registry
+- Downloaded files named as random UUID (e.g. `d46f1ce9-6842-4c12-b075-294edce8e014.json`) — fixed by intercepting `HTMLAnchorElement.click` to read `a.download` before the anchor fires
+
+### Technical
+- Added `JavascriptInterface` (`AndroidBlobDownloader`) on `WebView` for JS → Kotlin blob callbacks
+- `PendingHttpDownload` and `PendingBlobDownload` data classes hold in-flight download state across the SAF result callback
+- `saveBase64ToUri()` — decodes Base64 blob payload and writes to SAF URI via `ContentResolver`
+- `saveHttpToUri()` — fetches HTTP resource via OkHttp and writes to SAF URI
+- Added imports: `ConsoleMessage`, `MimeTypeMap`, `JSONObject`, `URLDecoder`, `Log`
+
+---
+
 ## [0.4.0] — 2026-05-24
 
 ### Added

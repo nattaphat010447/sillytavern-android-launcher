@@ -2,15 +2,32 @@ package com.standroid.launcher.ui
 
 import android.annotation.SuppressLint
 import android.content.BroadcastReceiver
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.net.Uri
 import android.os.Bundle
+import android.os.Environment
+import android.provider.MediaStore
+import android.util.Base64
+import android.util.Log
 import android.view.View
+import android.webkit.ConsoleMessage
+import android.webkit.JavascriptInterface
+import android.webkit.MimeTypeMap
+import android.webkit.URLUtil
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Toast
+import org.json.JSONObject
+import java.net.URLDecoder
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -149,6 +166,100 @@ class WebViewActivity : AppCompatActivity() {
         fileUploadCallback = null
     }
 
+    // ── Download support (SAF + Blob handling) ────────────────────────
+    
+    // Holds pending download info for HTTP URLs
+    private data class PendingHttpDownload(
+        val url: String,
+        val userAgent: String,
+        val mimetype: String
+    )
+    private var pendingHttpDownload: PendingHttpDownload? = null
+    
+    // Holds pending download info for Blob URLs
+    private data class PendingBlobDownload(
+        val base64Data: String,
+        val mimetype: String
+    )
+    private var pendingBlobDownload: PendingBlobDownload? = null
+    
+    // SAF launcher for saving files
+    private val saveFileLauncher = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.CreateDocument("*/*")
+    ) { uri ->
+        if (uri != null) {
+            lifecycleScope.launch(Dispatchers.IO) {
+                try {
+                    // Check which type of download we're handling
+                    val httpDownload = pendingHttpDownload
+                    val blobDownload = pendingBlobDownload
+                    
+                    when {
+                        httpDownload != null -> {
+                            saveHttpToUri(uri, httpDownload.url, httpDownload.userAgent)
+                            pendingHttpDownload = null
+                        }
+                        blobDownload != null -> {
+                            saveBase64ToUri(uri, blobDownload.base64Data, blobDownload.mimetype)
+                            pendingBlobDownload = null
+                        }
+                        else -> {
+                            withContext(Dispatchers.Main) {
+                                Toast.makeText(
+                                    this@WebViewActivity,
+                                    "No pending download",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(
+                            this@WebViewActivity,
+                            "Save failed: ${e.message}",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                    AppLogger.e(TAG, "Save exception", e)
+                }
+            }
+        } else {
+            // User cancelled
+            pendingHttpDownload = null
+            pendingBlobDownload = null
+        }
+    }
+    
+    /**
+     * JavaScript Interface for handling blob downloads.
+     * Called from injected JavaScript that reads blob data and converts to base64.
+     */
+    private inner class BlobDownloader {
+        @JavascriptInterface
+        fun onBase64DataReady(base64: String, filename: String, mimetype: String) {
+            AppLogger.i(TAG, "Blob data ready: $filename (${base64.length} chars)")
+            
+            // Store the blob data
+            pendingBlobDownload = PendingBlobDownload(base64, mimetype)
+            
+            // Launch SAF dialog on main thread
+            runOnUiThread {
+                try {
+                    saveFileLauncher.launch(filename)
+                } catch (e: Exception) {
+                    AppLogger.e(TAG, "Failed to launch SAF dialog", e)
+                    Toast.makeText(
+                        this@WebViewActivity,
+                        "Failed to open save dialog: ${e.message}",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    pendingBlobDownload = null
+                }
+            }
+        }
+    }
+
     // ── Node log helpers ──────────────────────────────────────────────
 
     /** Auto-scroll to bottom unless the user has manually scrolled up. */
@@ -185,6 +296,9 @@ class WebViewActivity : AppCompatActivity() {
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun configureWebView(wv: WebView) {
+        // Add JavaScript Interface for blob downloads
+        wv.addJavascriptInterface(BlobDownloader(), "AndroidBlobDownloader")
+        
         wv.webViewClient  = object : WebViewClient() {
             
             // Flag to track if the current page load encountered an error
@@ -213,6 +327,9 @@ class WebViewActivity : AppCompatActivity() {
                     // LOAD_NO_CACHE was needed to avoid stale error pages during webpack compile,
                     // but keeping it permanently wastes bandwidth on every navigation.
                     view.settings.cacheMode = WebSettings.LOAD_DEFAULT
+                    
+                    // Inject blob registry to capture blob URLs before they expire
+                    injectBlobRegistry(view)
                 }
             }
 
@@ -267,6 +384,19 @@ class WebViewActivity : AppCompatActivity() {
                 }
                 return true
             }
+            
+            override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
+                consoleMessage?.let { msg ->
+                    val logMsg = "[WebView Console] ${msg.message()} (${msg.sourceId()}:${msg.lineNumber()})"
+                    when (msg.messageLevel()) {
+                        ConsoleMessage.MessageLevel.ERROR -> AppLogger.e(TAG, logMsg)
+                        ConsoleMessage.MessageLevel.WARNING -> AppLogger.w(TAG, logMsg)
+                        ConsoleMessage.MessageLevel.DEBUG -> AppLogger.d(TAG, logMsg)
+                        else -> AppLogger.i(TAG, logMsg)
+                    }
+                }
+                return true
+            }
         }
 
         wv.settings.apply {
@@ -284,6 +414,11 @@ class WebViewActivity : AppCompatActivity() {
             saveFormData           = false
         }
         
+        // ── Download listener — handles character card / file exports ──
+        wv.setDownloadListener { url, userAgent, contentDisposition, mimetype, _ ->
+            handleDownload(url, userAgent, contentDisposition, mimetype)
+        }
+
         // Enable hardware acceleration features in WebView
         wv.setLayerType(View.LAYER_TYPE_HARDWARE, null)
 
@@ -292,6 +427,318 @@ class WebViewActivity : AppCompatActivity() {
             // the activity is in the background so the Node server response is processed quickly
             // when the user returns to the app.
             wv.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
+        }
+    }
+
+    /**
+     * Injects JavaScript to override URL.createObjectURL() and store blob references.
+     * This prevents blob URLs from expiring before we can download them.
+     */
+    private fun injectBlobRegistry(webView: WebView) {
+        val js = """
+            (function() {
+                if (window.blobRegistry) {
+                    console.log('[Android] Blob registry already initialized');
+                    return;
+                }
+                
+                console.log('[Android] Initializing blob registry');
+                window.blobRegistry = new Map();
+                window.blobFilenames = new Map();  // blobUrl → filename from a.download
+                
+                // Override URL.createObjectURL to capture blob references
+                const originalCreateObjectURL = URL.createObjectURL;
+                URL.createObjectURL = function(blob) {
+                    const url = originalCreateObjectURL.call(URL, blob);
+                    window.blobRegistry.set(url, blob);
+                    console.log('[Android] Registered blob:', url);
+                    return url;
+                };
+                
+                // Override URL.revokeObjectURL but DON'T delete from registry
+                // This keeps blobs accessible for download even after revoke
+                const originalRevokeObjectURL = URL.revokeObjectURL;
+                URL.revokeObjectURL = function(url) {
+                    // DON'T delete from registry - we need it for downloads!
+                    console.log('[Android] Revoke called but keeping blob in registry:', url);
+                    originalRevokeObjectURL.call(URL, url);
+                };
+                
+                // Intercept anchor .click() to capture the download filename
+                // SillyTavern does: a.download = "preset.json"; a.click();
+                const originalAnchorClick = HTMLAnchorElement.prototype.click;
+                HTMLAnchorElement.prototype.click = function() {
+                    if (this.href && this.href.startsWith('blob:') && this.download) {
+                        window.blobFilenames.set(this.href, this.download);
+                        console.log('[Android] Captured download filename:', this.download, 'for:', this.href);
+                    }
+                    originalAnchorClick.call(this);
+                };
+                
+                // Also intercept dispatchEvent (some code creates and dispatches click event)
+                const originalDispatchEvent = HTMLElement.prototype.dispatchEvent;
+                HTMLElement.prototype.dispatchEvent = function(event) {
+                    if (event.type === 'click' && this instanceof HTMLAnchorElement && 
+                        this.href && this.href.startsWith('blob:') && this.download) {
+                        window.blobFilenames.set(this.href, this.download);
+                        console.log('[Android] Captured download filename (dispatchEvent):', this.download);
+                    }
+                    return originalDispatchEvent.call(this, event);
+                };
+                
+                console.log('[Android] Blob registry initialized successfully');
+            })();
+        """.trimIndent()
+        
+        AppLogger.d(TAG, "Injecting blob registry")
+        webView.evaluateJavascript(js, null)
+    }
+    
+    /**
+     * Extracts filename from Content-Disposition header or generates a fallback name.
+     * Handles both standard and RFC 5987 encoded filenames.
+     */
+    private fun extractFilename(contentDisposition: String, mimetype: String, url: String): String {
+        AppLogger.d(TAG, "Extracting filename from: $contentDisposition")
+        
+        // Try to parse Content-Disposition header
+        // Examples:
+        // - attachment; filename="character.png"
+        // - attachment; filename*=UTF-8''character%20card.png
+        // - inline; filename="preset.json"
+        
+        if (contentDisposition.isNotBlank()) {
+            // Try RFC 5987 format first (filename*=UTF-8''...)
+            val rfc5987Regex = """filename\*=UTF-8''([^;]+)""".toRegex(RegexOption.IGNORE_CASE)
+            rfc5987Regex.find(contentDisposition)?.let { match ->
+                try {
+                    val decoded = URLDecoder.decode(match.groupValues[1], "UTF-8")
+                    AppLogger.d(TAG, "Extracted filename (RFC 5987): $decoded")
+                    return decoded
+                } catch (e: Exception) {
+                    AppLogger.w(TAG, "Failed to decode RFC 5987 filename: ${e.message}")
+                }
+            }
+            
+            // Try standard format (filename="...")
+            val standardRegex = """filename=["']?([^"';]+)["']?""".toRegex(RegexOption.IGNORE_CASE)
+            standardRegex.find(contentDisposition)?.let { match ->
+                val filename = match.groupValues[1].trim()
+                AppLogger.d(TAG, "Extracted filename (standard): $filename")
+                return filename
+            }
+        }
+        
+        // Fallback: try URLUtil.guessFileName
+        val guessed = URLUtil.guessFileName(url, contentDisposition, mimetype)
+        if (guessed != "downloadfile.bin" && !guessed.matches(Regex("^[a-f0-9-]+\\.bin$"))) {
+            AppLogger.d(TAG, "Using URLUtil guess: $guessed")
+            return guessed
+        }
+        
+        // Last resort: generate filename from mimetype and timestamp
+        val extension = MimeTypeMap.getSingleton().getExtensionFromMimeType(mimetype) ?: "bin"
+        val fallback = "download_${System.currentTimeMillis()}.$extension"
+        AppLogger.d(TAG, "Using fallback filename: $fallback")
+        return fallback
+    }
+
+    /**
+     * Handles file downloads from the WebView (e.g., character card exports).
+     * Supports both HTTP URLs (including localhost) and blob URLs.
+     * Uses Storage Access Framework (SAF) to let user choose save location.
+     */
+    private fun handleDownload(url: String, userAgent: String, contentDisposition: String, mimetype: String) {
+        val filename = extractFilename(contentDisposition, mimetype, url)
+        
+        AppLogger.i(TAG, "Download requested: $filename from $url (mimetype: $mimetype)")
+        AppLogger.d(TAG, "Content-Disposition: $contentDisposition")
+        
+        if (url.startsWith("blob:")) {
+            // Blob URL - need to extract data via JavaScript
+            AppLogger.d(TAG, "Handling blob URL download")
+            
+            // Properly escape strings for JavaScript using JSON encoding
+            val escapedFilename = JSONObject.quote(filename)
+            val escapedMimetype = JSONObject.quote(mimetype)
+            
+            // Inject JavaScript to read the blob from registry (or fallback to fetch)
+            val js = """
+                (function() {
+                    const blobUrl = ${JSONObject.quote(url)};
+                    let filename = $escapedFilename;
+                    const mimetype = $escapedMimetype;
+                    
+                    // Try to get blob from registry first
+                    let blob = window.blobRegistry ? window.blobRegistry.get(blobUrl) : null;
+                    
+                    if (blob) {
+                        console.log('[Android] Found blob in registry:', blobUrl);
+                        
+                        // Priority 1: blobFilenames map (captured from a.download attribute)
+                        const capturedFilename = window.blobFilenames ? window.blobFilenames.get(blobUrl) : null;
+                        if (capturedFilename && capturedFilename !== '') {
+                            filename = capturedFilename;
+                            console.log('[Android] Using captured a.download filename:', filename);
+                        // Priority 2: blob.name (for File objects, not plain Blobs)
+                        } else if (blob.name && blob.name !== '' && !blob.name.match(/^[a-f0-9-]{36}/)) {
+                            filename = blob.name;
+                            console.log('[Android] Using blob.name:', filename);
+                        } else {
+                            console.log('[Android] Using fallback filename:', filename);
+                        }
+                        
+                        // Read blob directly from registry
+                        const reader = new FileReader();
+                        reader.onloadend = function() {
+                            const base64 = reader.result.split(',')[1];
+                            AndroidBlobDownloader.onBase64DataReady(
+                                base64,
+                                filename,
+                                mimetype
+                            );
+                        };
+                        reader.readAsDataURL(blob);
+                    } else {
+                        console.log('[Android] Blob not in registry, trying fetch:', blobUrl);
+                        // Fallback: try to fetch (may fail if blob expired)
+                        fetch(blobUrl)
+                            .then(response => response.blob())
+                            .then(fetchedBlob => {
+                                const reader = new FileReader();
+                                reader.onloadend = function() {
+                                    const base64 = reader.result.split(',')[1];
+                                    AndroidBlobDownloader.onBase64DataReady(
+                                        base64,
+                                        filename,
+                                        mimetype
+                                    );
+                                };
+                                reader.readAsDataURL(fetchedBlob);
+                            })
+                            .catch(err => {
+                                console.error('[Android] Blob fetch failed:', err);
+                                console.error('[Android] URL:', blobUrl);
+                                console.error('[Android] Filename:', filename);
+                            });
+                    }
+                })();
+            """.trimIndent()
+            
+            AppLogger.d(TAG, "Injecting JavaScript for blob download")
+            binding.webView.evaluateJavascript(js, null)
+            
+        } else if (url.startsWith("http://") || url.startsWith("https://")) {
+            // HTTP/HTTPS URL - store info and launch SAF dialog
+            AppLogger.d(TAG, "Handling HTTP URL download")
+            Toast.makeText(this, "Choose save location for: $filename", Toast.LENGTH_SHORT).show()
+            
+            pendingHttpDownload = PendingHttpDownload(url, userAgent, mimetype)
+            
+            try {
+                saveFileLauncher.launch(filename)
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "Failed to launch SAF dialog", e)
+                Toast.makeText(
+                    this,
+                    "Failed to open save dialog: ${e.message}",
+                    Toast.LENGTH_LONG
+                ).show()
+                pendingHttpDownload = null
+            }
+            
+        } else {
+            // Unsupported URL scheme
+            AppLogger.w(TAG, "Unsupported URL scheme: $url")
+            Toast.makeText(
+                this,
+                "Unsupported download URL: ${url.substringBefore(":")}",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+    
+    /**
+     * Saves base64-encoded data (from blob) to the given URI.
+     */
+    private suspend fun saveBase64ToUri(uri: Uri, base64Data: String, mimetype: String) {
+        try {
+            val bytes = Base64.decode(base64Data, Base64.DEFAULT)
+            
+            contentResolver.openOutputStream(uri)?.use { output ->
+                output.write(bytes)
+            }
+            
+            withContext(Dispatchers.Main) {
+                Toast.makeText(
+                    this@WebViewActivity,
+                    "File saved successfully ✓",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+            AppLogger.i(TAG, "Blob download completed: ${bytes.size} bytes")
+            
+        } catch (e: Exception) {
+            withContext(Dispatchers.Main) {
+                Toast.makeText(
+                    this@WebViewActivity,
+                    "Save failed: ${e.message}",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+            AppLogger.e(TAG, "Failed to save blob data", e)
+        }
+    }
+    
+    /**
+     * Downloads HTTP URL content and saves to the given URI.
+     */
+    private suspend fun saveHttpToUri(uri: Uri, url: String, userAgent: String) {
+        try {
+            // Fetch file via OkHttp (works with localhost)
+            val client = OkHttpClient()
+            val request = Request.Builder()
+                .url(url)
+                .header("User-Agent", userAgent)
+                .build()
+            
+            val response = client.newCall(request).execute()
+            
+            if (!response.isSuccessful) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(
+                        this@WebViewActivity,
+                        "Download failed: HTTP ${response.code}",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+                AppLogger.e(TAG, "Download failed: HTTP ${response.code}")
+                return
+            }
+            
+            // Write response body to URI
+            contentResolver.openOutputStream(uri)?.use { output ->
+                response.body?.byteStream()?.copyTo(output)
+            }
+            
+            withContext(Dispatchers.Main) {
+                Toast.makeText(
+                    this@WebViewActivity,
+                    "File saved successfully ✓",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+            AppLogger.i(TAG, "HTTP download completed")
+            
+        } catch (e: Exception) {
+            withContext(Dispatchers.Main) {
+                Toast.makeText(
+                    this@WebViewActivity,
+                    "Download failed: ${e.message}",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+            AppLogger.e(TAG, "HTTP download exception", e)
         }
     }
 

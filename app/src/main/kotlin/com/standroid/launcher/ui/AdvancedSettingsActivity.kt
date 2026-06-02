@@ -84,6 +84,11 @@ class AdvancedSettingsActivity : AppCompatActivity() {
             AppPrefs.autoUpdateOnStartup = isChecked
         }
 
+        // ── Edit config.yaml ──────────────────────────────────────────
+        binding.rowEditConfig.setOnClickListener {
+            showConfigEditor()
+        }
+
         // ── Reinstall Dependencies ────────────────────────────────────
         binding.rowReinstallDeps.setOnClickListener {
             styledDialog()
@@ -723,6 +728,96 @@ class AdvancedSettingsActivity : AppCompatActivity() {
                 timerJob.cancel()
                 lp.appendLog("Error: ${e.message}")
                 lp.complete(success = false, finalTitle = "Replace Failed")
+            }
+        }
+    }
+
+    // ── Config Editor ─────────────────────────────────────────────────
+
+    private fun showConfigEditor() {
+        val configFile = File(filesDir, "SillyTavern/config.yaml")
+
+        if (!configFile.exists()) {
+            styledDialog()
+                .setTitle("Config not found")
+                .setMessage("config.yaml does not exist. SillyTavern may not be installed yet.")
+                .setPositiveButton("OK", null)
+                .show()
+            return
+        }
+
+        val currentContent = try {
+            configFile.readText()
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "Failed to read config.yaml", e)
+            styledDialog()
+                .setTitle("Read Error")
+                .setMessage("Could not read config.yaml: ${e.message}")
+                .setPositiveButton("OK", null)
+                .show()
+            return
+        }
+
+        val editText = android.widget.EditText(this).apply {
+            setText(currentContent)
+            setTextColor(ContextCompat.getColor(context, R.color.text_primary))
+            setBackgroundColor(ContextCompat.getColor(context, R.color.bg_elevated))
+            typeface = android.graphics.Typeface.MONOSPACE
+            textSize = 12f
+            setPadding(24, 24, 24, 24)
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or
+                        android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE or
+                        android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            gravity = android.view.Gravity.TOP or android.view.Gravity.START
+            setHorizontallyScrolling(false)
+        }
+
+        val scrollView = android.widget.ScrollView(this).apply {
+            addView(editText)
+        }
+
+        val dialog = styledDialog()
+            .setTitle("Edit config.yaml")
+            .setView(scrollView)
+            .setPositiveButton("Save", null)
+            .setNegativeButton("Cancel", null)
+            .create()
+
+        dialog.show()
+
+        // override PositiveButton หลัง show() เพื่อป้องกัน dialog ปิดตัวเองอัตโนมัติ
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            try {
+                configFile.writeText(editText.text.toString())
+                dialog.dismiss()
+                android.widget.Toast.makeText(
+                    this,
+                    "Saved successfully ✓",
+                    android.widget.Toast.LENGTH_SHORT
+                ).show()
+                if (STForegroundService.isServiceRunning) {
+                    styledDialog()
+                        .setTitle("Restart Required")
+                        .setMessage("config.yaml has been saved.\n\nRestart SillyTavern server to apply changes?")
+                        .setPositiveButton("Restart") { _, _ ->
+                            startService(STForegroundService.stopIntent(this))
+                            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                                ContextCompat.startForegroundService(
+                                    this,
+                                    STForegroundService.startIntent(this)
+                                )
+                            }, 500)
+                        }
+                        .setNegativeButton("Later", null)
+                        .show()
+                }
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "Failed to write config.yaml", e)
+                styledDialog()
+                    .setTitle("Save Error")
+                    .setMessage("Could not save: ${e.message}")
+                    .setPositiveButton("OK", null)
+                    .show()
             }
         }
     }
