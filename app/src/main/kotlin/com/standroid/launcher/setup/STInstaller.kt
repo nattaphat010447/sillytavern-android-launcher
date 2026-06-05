@@ -51,6 +51,13 @@ class STInstaller(private val ctx: Context) {
 
         cloneRepository(REPO_URL, branch, destDir, onProgress)
 
+        // Apply extension patch to enable git-less extension updates on Android
+        val patcher = ExtensionPatcher(ctx)
+        val patchOk = patcher.applyPatch(destDir)
+        if (!patchOk) {
+            AppLogger.w(TAG, "Extension patch failed — extension updates may not work without native git")
+        }
+
         branch
     }
 

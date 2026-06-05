@@ -4,6 +4,8 @@ import android.content.Context
 import com.standroid.launcher.util.AppLogger
 import java.io.File
 import java.io.InputStream
+import java.nio.file.Files
+import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.concurrent.thread
 
@@ -80,24 +82,39 @@ class NodeRunner(private val ctx: Context) {
         val cmd = mutableListOf(nodeBinaryPath) + args
         AppLogger.i(TAG, "Spawning: ${cmd.joinToString(" ")}")
 
-        // Create a wrapper script for 'node' so that scripts calling `env node` will find it
-        val wrapperDir = File(ctx.cacheDir, "bin_wrapper").apply { mkdirs() }
-        val nodeWrapper = File(wrapperDir, "node")
-        if (!nodeWrapper.exists() || nodeWrapper.readText() != "#!/system/bin/sh\nexec \"$nodeBinaryPath\" \"\$@\"") {
-            nodeWrapper.writeText("#!/system/bin/sh\nexec \"$nodeBinaryPath\" \"\$@\"")
-            nodeWrapper.setExecutable(true, true)
-        }
+        // SELinux on Android prevents exec of app_data_file (filesDir scripts).
+        // The only files untrusted_app can exec are in nativeLibraryDir (apk_data_file).
+        // Solution: create symlinks from bin_wrapper/ → nativeLibraryDir/*.so
+        // The kernel resolves the symlink and uses the *target* file's SELinux context,
+        // which IS executable.
+        val wrapperDir = File(ctx.filesDir, "bin_wrapper").apply { mkdirs() }
+        val nativeLibDir = ctx.applicationInfo.nativeLibraryDir
 
-        // Stub out browser-open helpers that don't exist on Android.
-        // SillyTavern calls `xdg-open` (Linux) when browserLaunch.enabled=true —
-        // which crashes with ENOENT. A no-op wrapper in PATH silently absorbs the call.
-        listOf("xdg-open", "open").forEach { name ->
-            val stub = File(wrapperDir, name)
-            val content = "#!/system/bin/sh\nexit 0\n"
-            if (!stub.exists() || stub.readText() != content) {
-                stub.writeText(content)
-                stub.setExecutable(true, true)
+        // Symlink node binary so `env node` resolves via PATH
+        symlinkBinary(File(nativeLibDir, "libnode.so"), File(wrapperDir, "node"))
+
+        // Git binary — enables SillyTavern extension updates
+        val gitBin = File(nativeLibDir, "libgit.so")
+        val gitTemplateDir = File(ctx.filesDir, "git-templates")
+        val gitCoreBinDir  = File(wrapperDir, "git-core").apply { mkdirs() }
+
+        if (gitBin.exists()) {
+            symlinkBinary(gitBin, File(wrapperDir, "git"))
+
+            // Git helper binaries that git exec's for remote operations
+            mapOf(
+                "git-remote-https"   to "libgit-remote-https.so",
+                "git-remote-http"    to "libgit-remote-http.so",
+                "git-receive-pack"   to "libgit-receive-pack.so",
+                "git-upload-pack"    to "libgit-upload-pack.so",
+                "git-upload-archive" to "libgit-upload-archive.so",
+            ).forEach { (name, lib) ->
+                val src = File(nativeLibDir, lib)
+                if (src.exists()) symlinkBinary(src, File(gitCoreBinDir, name))
             }
+            AppLogger.d(TAG, "Git symlinks created; gitCoreBinDir=${gitCoreBinDir.absolutePath}")
+        } else {
+            AppLogger.w(TAG, "libgit.so not found — extension updates will fail. Run setup-native-libs.py")
         }
 
         val pb = ProcessBuilder(cmd).apply {
@@ -108,17 +125,43 @@ class NodeRunner(private val ctx: Context) {
                 put("TMPDIR",  ctx.cacheDir.absolutePath)
                 put("NODE_ENV","production")
 
-                // Tell the dynamic linker where to find libcares.so, libssl.so,
-                // libcrypto.so, libicui18n.so, libicuuc.so, libsqlite3.so, etc.
-                // These are extracted by AGP into nativeLibraryDir alongside libnode.so.
-                val nativeDir = ctx.applicationInfo.nativeLibraryDir
-                val oldLd = get("LD_LIBRARY_PATH")
-                put("LD_LIBRARY_PATH",
-                    if (oldLd.isNullOrEmpty()) nativeDir else "$nativeDir:$oldLd")
-
-                // Prepend wrapper dir to PATH so `env node` finds our wrapper script
+                // PATH: prepend wrapper dir so `node` and `git` symlinks are found
                 val oldPath = get("PATH") ?: "/system/bin"
-                put("PATH",    "${wrapperDir.absolutePath}:$oldPath")
+                put("PATH", "${wrapperDir.absolutePath}:$oldPath")
+
+                // LD_LIBRARY_PATH: child processes (e.g. git) spawned by Node inherit
+                // this env var and use it to find shared libraries.  Without it, git
+                // can't load libpcre2-8.so / libcurl.so / libexpat.so from nativeLibraryDir.
+                val nativeLibDirPath = nativeLibDir  // String, already in scope
+                val oldLd = get("LD_LIBRARY_PATH") ?: ""
+                put("LD_LIBRARY_PATH",
+                    if (oldLd.isNotEmpty()) "$nativeLibDirPath:$oldLd"
+                    else nativeLibDirPath)
+
+                // Git requires these to find its helper binaries and templates
+                if (gitBin.exists()) {
+                    put("GIT_EXEC_PATH",    gitCoreBinDir.absolutePath)
+                    put("GIT_TEMPLATE_DIR", gitTemplateDir.absolutePath)
+
+                    // GIT_SSL_CAINFO: Termux git has the Termux cert path hardcoded.
+                    // Override to use Android's system CA bundle instead.
+                    // Android stores CA certs as individual .pem files in a dir, so we
+                    // use GIT_SSL_CAPATH (directory) instead of GIT_SSL_CAINFO (single file).
+                    // Alternatively, override git's http.sslCAInfo config to a bundled file.
+                    val systemCaDir = "/system/etc/security/cacerts"
+                    if (java.io.File(systemCaDir).exists()) {
+                        put("GIT_SSL_CAPATH", systemCaDir)
+                    }
+                    // Also set http.sslVerify=false as a fallback if CAPATH doesn't work.
+                    // This is less secure but ensures Extension Update works.
+                    // TODO: Bundle cacert.pem in assets for proper cert validation
+                    put("GIT_SSL_NO_VERIFY", "false")
+                    put("GIT_CONFIG_COUNT", "2")
+                    put("GIT_CONFIG_KEY_0", "http.sslCAPath")
+                    put("GIT_CONFIG_VALUE_0", systemCaDir)
+                    put("GIT_CONFIG_KEY_1", "http.sslVerify")
+                    put("GIT_CONFIG_VALUE_1", "true")
+                }
                 putAll(env)
             }
         }
@@ -142,6 +185,34 @@ class NodeRunner(private val ctx: Context) {
     fun isRunning(): Boolean = processRef.get()?.isAlive == true
 
     // ── Private helpers ────────────────────────────────────────────────
+
+    /**
+     * Creates a symlink at [link] pointing to [target].
+     *
+     * Symlinks are used instead of shell scripts because Android SELinux
+     * prevents execution of app_data_file (filesDir). When the kernel
+     * executes a symlink it checks the *target* file's SELinux context —
+     * nativeLibraryDir files are apk_data_file which IS executable.
+     *
+     * Recreates the symlink if the target has changed (e.g., after app update).
+     */
+    private fun symlinkBinary(target: File, link: File) {
+        if (!target.exists()) return
+        runCatching {
+            val targetPath: Path = target.toPath()
+            val linkPath: Path   = link.toPath()
+            // Recreate if link is missing, is not a symlink, or points to wrong target
+            val needsCreate = !Files.isSymbolicLink(linkPath) ||
+                              Files.readSymbolicLink(linkPath) != targetPath
+            if (needsCreate) {
+                Files.deleteIfExists(linkPath)
+                Files.createSymbolicLink(linkPath, targetPath)
+                AppLogger.d(TAG, "Symlinked ${link.name} → ${target.absolutePath}")
+            }
+        }.onFailure {
+            AppLogger.e(TAG, "Failed to create symlink ${link.name} → ${target.absolutePath}: ${it.message}")
+        }
+    }
 
     private fun pipeStream(stream: InputStream, label: String) {
         thread(isDaemon = true, name = "NodeRunner-$label") {

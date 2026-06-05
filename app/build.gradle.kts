@@ -24,24 +24,24 @@ android {
         applicationId  = "com.standroid.launcher"
         minSdk         = 33
         targetSdk      = 35
-        versionCode    = 5
-        versionName    = "0.5.0"
+        versionCode    = 6
+        versionName    = "0.6.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // Extract .so files so libnode.so is executable at runtime
         ndk {
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
         }
     }
 
-    // ── ABI splits — produces one APK per architecture ────────────────────────
+    // ── ABI splits — separate APK per architecture ────────────────────────────
     splits {
         abi {
             isEnable = true
             reset()
-            include("arm64-v8a", "armeabi-v7a")
-            isUniversalApk = true   // also produce a fat APK for sideload convenience
+            include("arm64-v8a", "armeabi-v7a", "x86_64")
+            isUniversalApk = true  // also produce a fat APK for sideload convenience
         }
     }
 
@@ -95,6 +95,15 @@ android {
     }
     kotlinOptions {
         jvmTarget = "17"
+    }
+
+    // ── APK naming: standroid-{abi}-{buildType}.apk ────────────────────────────
+    applicationVariants.all {
+        outputs.all {
+            val output = this as com.android.build.gradle.internal.api.BaseVariantOutputImpl
+            val abiName = output.getFilter(com.android.build.OutputFile.ABI) ?: "universal"
+            output.outputFileName = "app-${abiName}-${buildType.name}.apk"
+        }
     }
 }
 

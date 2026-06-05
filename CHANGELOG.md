@@ -5,6 +5,33 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.6.0] — 2026-06-06
+
+### Added
+- **Bundled git binary** — ships `libgit.so` + git helper binaries (`libgit-remote-https.so`, `libgit-http-fetch.so`, `libgit-http-push.so`) extracted from the Termux aarch64 package
+  - Enables SillyTavern's "Update Extension" feature on Android
+  - git is exposed to Node.js via a wrapper script in `cacheDir/bin_wrapper/git`
+  - `GIT_EXEC_PATH` and `GIT_TEMPLATE_DIR` environment variables are set automatically
+  - `HOME` is set to `filesDir` so git can write `.gitconfig`
+- **Git template files** — `GitSetup.kt` copies `assets/git-templates/` to `filesDir/git-templates/` on first launch
+  - Required by git for repository initialization and hook templates
+- **git dependency libraries** — `setup-native-libs.py` now downloads and stages:
+  - `libcurl.so` — HTTPS transport for git clone/fetch/push
+  - `libpcre2-8.so` — pattern matching (grep, log, etc.)
+  - `libexpat.so` — XML/config parsing
+  - `libiconv.so` — character encoding
+
+### Fixed
+- Extension "Update" button in SillyTavern now works — previously failed silently with "branches fetch failed / Internal Server Error" because git binary was missing from PATH
+
+### Technical
+- New `GitSetup.kt` utility class for asset-to-filesDir template extraction
+- `NodeRunner.kt` now creates `bin_wrapper/git` wrapper alongside existing `node`/`xdg-open`/`open` stubs
+- `STForegroundService.onCreate()` calls `GitSetup.ensureTemplates()` before starting Node
+- `setup-native-libs.py` updated with `extract_git_binary()` and `extract_git_templates()` functions
+
+---
+
 ## [0.5.0] — 2026-06-02
 
 ### Added

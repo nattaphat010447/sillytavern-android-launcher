@@ -14,6 +14,7 @@ import com.standroid.launcher.R
 import com.standroid.launcher.ui.WebViewActivity
 import com.standroid.launcher.util.AppLogger
 import com.standroid.launcher.util.AppPrefs
+import com.standroid.launcher.util.GitSetup
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -88,6 +89,9 @@ class STForegroundService : Service() {
         // Forward every Node log line to whoever is currently registered in the companion.
         nodeRunner.setLogListener { line -> nodeLogListener?.onLine(line) }
         createNotificationChannel()
+        // Extract git template files from assets on first run.
+        // NodeRunner references filesDir/git-templates via GIT_TEMPLATE_DIR env var.
+        GitSetup.ensureTemplates(this)
         AppLogger.i(TAG, "Service created")
     }
 
@@ -145,11 +149,12 @@ class STForegroundService : Service() {
      * Patches config.yaml with Android-safe settings:
      *  - IPv4 only (Android does not support dual-stack binding on all versions)
      *  - browserLaunch disabled (`xdg-open` does not exist on Android)
+     *  - git.backend set to builtin (use isomorphic-git instead of native git binary)
      *
      * Creates a minimal config.yaml if the file doesn't exist yet.
      * Uses simple line-by-line replacement — no full YAML parser needed.
      */
-    private fun patchBrowserLaunch(stDir: File) {
+    private fun patchConfig(stDir: File) {
         val configFile = File(stDir, "config.yaml")
         
         if (!configFile.exists()) {
@@ -166,9 +171,11 @@ class STForegroundService : Service() {
                   enabled: false
                 listenAddress:
                   ipv4: 0.0.0.0
+                git:
+                  backend: builtin
             """.trimIndent()
             configFile.writeText(minimalConfig + "\n")
-            AppLogger.i(TAG, "config.yaml: created minimal safe config")
+            AppLogger.i(TAG, "config.yaml: created minimal safe config with git.backend=builtin")
             return
         }
 
@@ -180,36 +187,57 @@ class STForegroundService : Service() {
 
         var inProtocolBlock = false
         var inBrowserLaunchBlock = false
+        var inGitBlock = false
+        var foundGitBlock = false
 
         for (line in lines) {
             val trimmed = line.trim()
-            
-            // Detect block starts
+
+            // Detect top-level block starts (no leading spaces)
             if (!line.startsWith(" ") && line.endsWith(":")) {
                 inProtocolBlock = line.startsWith("protocol:")
                 inBrowserLaunchBlock = line.startsWith("browserLaunch:")
+                inGitBlock = line.startsWith("git:")
+                if (inGitBlock) foundGitBlock = true
             }
 
             var patchedLine = line
 
-            if (inProtocolBlock && trimmed.startsWith("ipv6:")) {
-                if (trimmed.endsWith("true")) {
-                    patchedLine = line.replace("true", "false")
-                    changed = true
+            when {
+                inProtocolBlock && trimmed.startsWith("ipv6:") -> {
+                    if (trimmed.endsWith("true")) {
+                        patchedLine = line.replace("true", "false")
+                        changed = true
+                    }
                 }
-            } else if (inBrowserLaunchBlock && trimmed.startsWith("enabled:")) {
-                if (trimmed.endsWith("true")) {
-                    patchedLine = line.replace("true", "false")
-                    changed = true
+                inBrowserLaunchBlock && trimmed.startsWith("enabled:") -> {
+                    if (trimmed.endsWith("true")) {
+                        patchedLine = line.replace("true", "false")
+                        changed = true
+                    }
+                }
+                inGitBlock && trimmed.startsWith("backend:") -> {
+                    if (!trimmed.endsWith("builtin")) {
+                        // Replace whatever value is there with builtin
+                        patchedLine = line.replace(Regex("backend:.*"), "backend: builtin")
+                        changed = true
+                    }
                 }
             }
 
             newLines.add(patchedLine)
         }
 
+        // If git block doesn't exist at all, append it
+        if (!foundGitBlock) {
+            newLines.add("git:")
+            newLines.add("  backend: builtin")
+            changed = true
+        }
+
         if (changed) {
             configFile.writeText(newLines.joinToString("\n"))
-            AppLogger.i(TAG, "config.yaml: patched Android-safe settings (ipv6=false, browserLaunch=false)")
+            AppLogger.i(TAG, "config.yaml: patched Android-safe settings (ipv6=false, browserLaunch=false, git.backend=builtin)")
             AppLogger.d(TAG, "--- config.yaml AFTER PATCH ---\n${configFile.readText()}\n-------------------------------")
         } else {
             AppLogger.d(TAG, "config.yaml: no patch needed (already safe)")
@@ -253,7 +281,7 @@ class STForegroundService : Service() {
                 "--no-open"           // localhost only — no browser launch
             )
 
-            patchBrowserLaunch(stDir)
+            patchConfig(stDir)
 
             // NODE_COMPILE_CACHE — cache compiled bytecode across restarts for faster startup
             val compileCacheDir = File(cacheDir, "node_compile_cache").also { it.mkdirs() }

@@ -3,27 +3,33 @@
 setup-native-libs.py — one-command native library setup for STANDROID
 ======================================================================
 
-Downloads, patches, and stages all required .so files for arm64-v8a
-from the Termux apt repository.  Run this ONCE after cloning.
+Downloads, patches, and stages all required .so files for the target ABI
+from the Termux apt repository.  Run this ONCE after cloning (per ABI).
 
 Usage:
-    python scripts/setup-native-libs.py            # first-time setup
-    python scripts/setup-native-libs.py --force    # re-download everything
+    python scripts/setup-native-libs.py                      # arm64-v8a (default)
+    python scripts/setup-native-libs.py --abi x86_64         # x86_64 (emulator/PC)
+    python scripts/setup-native-libs.py --abi all            # both arm64-v8a and x86_64
+    python scripts/setup-native-libs.py --force              # re-download arm64-v8a
+    python scripts/setup-native-libs.py --abi x86_64 --force # re-download x86_64
 
 Requirements:
     Python 3.8+  |  Internet access
     Optional: pip install zstandard   (needed only if Termux ships .tar.zst packages)
 
 What this script does:
-    1. Fetches the Termux aarch64 package index
+    1. Fetches the Termux package index for the target ABI
     2. Downloads Node.js LTS + all shared-library dependencies
-    3. Patches versioned SONAME strings (libcares.so.2 → libcares.so, etc.)
-    4. Replaces NDK libc++_shared.so with Termux version (has vtable symbols)
-    5. Verifies every DT_NEEDED entry is satisfied
+    3. Downloads git binary + helpers for SillyTavern extension updates
+    4. Patches versioned SONAME strings (libcares.so.2 → libcares.so, etc.)
+    5. Replaces NDK libc++_shared.so with Termux version (has vtable symbols)
+    6. Extracts git template files into app/src/main/assets/git-templates/
+    7. Verifies every DT_NEEDED entry is satisfied
 
-After running, do:
-    ./gradlew :app:assembleDebug
-    adb install -r app/build/outputs/apk/debug/app-debug.apk
+After running, build with Gradle:
+    ./gradlew assembleArmDebug    # ARM APK  (arm64-v8a + armeabi-v7a)
+    ./gradlew assembleX86Debug    # x86 APK  (x86_64)
+    ./gradlew assembleDebug       # both
 """
 
 import argparse
@@ -38,13 +44,31 @@ import urllib.request
 from pathlib import Path
 
 # ── Paths ────────────────────────────────────────────────────────────────────
-SCRIPT_DIR   = Path(__file__).parent.resolve()
-PROJECT_ROOT = SCRIPT_DIR.parent
-DEST_DIR     = PROJECT_ROOT / "app" / "src" / "main" / "jniLibs" / "arm64-v8a"
+SCRIPT_DIR        = Path(__file__).parent.resolve()
+PROJECT_ROOT      = SCRIPT_DIR.parent
+GIT_TEMPLATES_DIR = PROJECT_ROOT / "app" / "src" / "main" / "assets" / "git-templates"
+ASSETS_DIR        = PROJECT_ROOT / "app" / "src" / "main" / "assets"
+CACERT_URL        = "https://curl.se/ca/cacert.pem"
 
 # ── Termux apt ────────────────────────────────────────────────────────────────
-TERMUX_APT      = "https://packages.termux.dev/apt/termux-main"
-PACKAGES_GZ_URL = f"{TERMUX_APT}/dists/stable/main/binary-aarch64/Packages.gz"
+TERMUX_APT = "https://packages.termux.dev/apt/termux-main"
+
+# Map Android ABI → Termux architecture name
+ABI_TO_ARCH = {
+    "arm64-v8a": "aarch64",
+    "x86_64":    "x86_64",
+}
+
+def get_dest_dir(abi: str) -> Path:
+    return PROJECT_ROOT / "app" / "src" / "main" / "jniLibs" / abi
+
+def get_packages_url(abi: str) -> str:
+    arch = ABI_TO_ARCH[abi]
+    return f"{TERMUX_APT}/dists/stable/main/binary-{arch}/Packages.gz"
+
+# Legacy defaults for functions that still reference global DEST_DIR/PACKAGES_GZ_URL
+DEST_DIR        = get_dest_dir("arm64-v8a")
+PACKAGES_GZ_URL = get_packages_url("arm64-v8a")
 
 # ── SONAME patches ───────────────────────────────────────────────────────────
 # Every (search, replace) pair MUST have identical byte length.
@@ -66,8 +90,9 @@ SONAME_PATCHES: list[tuple[bytes, bytes]] = [
     (b'libbrotlienc.so.1\x00',      b'libbrotlienc.so\x00\x00\x00'),
     (b'libbrotlicommon.so.1\x00',   b'libbrotlicommon.so\x00\x00\x00'),
     # QUIC
-    (b'libngtcp2.so.16\x00',        b'libngtcp2.so\x00\x00\x00\x00'),
-    (b'libnghttp3.so.9\x00',        b'libnghttp3.so\x00\x00\x00'),
+    (b'libngtcp2.so.16\x00',              b'libngtcp2.so\x00\x00\x00\x00'),
+    (b'libngtcp2_crypto_ossl.so.0\x00',   b'libngtcp2_crypto_ossl.so\x00\x00\x00'),
+    (b'libnghttp3.so.9\x00',              b'libnghttp3.so\x00\x00\x00'),
     # ICU v78
     (b'libicudata.so.78\x00',       b'libicudata.so\x00\x00\x00\x00'),
     (b'libicui18n.so.78\x00',       b'libicui18n.so\x00\x00\x00\x00'),
@@ -91,8 +116,23 @@ PACKAGES: list[tuple[str, list[str]]] = [
     ("brotli",     ["libbrotlidec.so", "libbrotlienc.so", "libbrotlicommon.so"]),
     ("libicu",     ["libicui18n.so", "libicuuc.so", "libicudata.so"]),
     ("sqlite",     ["libsqlite3.so"]),
-    ("libngtcp2",  ["libngtcp2.so"]),       # optional: QUIC
+    ("libngtcp2",  ["libngtcp2.so", "libngtcp2_crypto_ossl.so"]),  # QUIC
     ("libnghttp3", ["libnghttp3.so"]),       # optional: QUIC
+    # git + dependencies for SillyTavern extension updates
+    ("libcurl",    ["libcurl.so"]),         # git HTTPS transport
+    ("libssh2",    ["libssh2.so"]),         # libcurl SSH/HTTPS dependency
+    ("pcre2",      ["libpcre2-8.so"]),      # git pattern matching
+    ("libexpat",   ["libexpat.so"]),        # git config/xml parsing
+    ("libiconv",   ["libiconv.so"]),        # character encoding
+]
+
+# Additional SONAME patches for new packages (git/curl dependencies)
+SONAME_PATCHES_EXTRA: list[tuple[bytes, bytes]] = [
+    (b'libssh2.so.1\x00',           b'libssh2.so\x00\x00'),
+    (b'libcurl.so.4\x00',           b'libcurl.so\x00\x00\x00'),
+    (b'libpcre2-8.so.0\x00',        b'libpcre2-8.so\x00\x00\x00'),
+    (b'libexpat.so.1\x00',          b'libexpat.so\x00\x00\x00'),
+    (b'libiconv.so.2\x00',          b'libiconv.so\x00\x00\x00'),
 ]
 
 # Termux packages that contain libc++_shared.so with vtable symbols
@@ -237,7 +277,8 @@ def patch_sonames(path: Path) -> None:
         count = data.count(search)
         if count:
             data = data.replace(search, replace)
-            changed.append(f"{search.rstrip(b'\\x00').decode(errors='replace')}×{count}")
+            clean = search.rstrip(b'\x00').decode(errors='replace')
+            changed.append(f"{clean}×{count}")
     if len(data) != original_size:
         print(f"    ❌ BUG: file size changed in {path.name} — skipping write")
         return
@@ -325,10 +366,12 @@ def get_dt_needed(path: Path) -> list[str]:
 # Main logic
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def load_termux_index() -> dict[str, dict[str, str]]:
-    """Download and parse the Termux aarch64 Packages.gz index."""
-    print("📦 Loading Termux package index (aarch64)...")
-    raw  = fetch(PACKAGES_GZ_URL, "Packages.gz")
+def load_termux_index_for_abi(abi: str) -> dict[str, dict[str, str]]:
+    """Download and parse the Termux Packages.gz index for the given ABI."""
+    arch = ABI_TO_ARCH[abi]
+    url = get_packages_url(abi)
+    print(f"📦 Loading Termux package index ({arch})...")
+    raw  = fetch(url, "Packages.gz")
     text = gzip.decompress(raw).decode(errors="ignore")
 
     packages: dict[str, dict[str, str]] = {}
@@ -347,6 +390,164 @@ def load_termux_index() -> dict[str, dict[str, str]]:
 
     print(f"  Loaded {len(packages)} packages.")
     return packages
+
+
+def load_termux_index() -> dict[str, dict[str, str]]:
+    """Download and parse the Termux aarch64 Packages.gz index (legacy default)."""
+    return load_termux_index_for_abi("arm64-v8a")
+
+
+def extract_git_binary(index: dict, dest: Path) -> bool:
+    """Download the git package and extract the main binary as libgit.so,
+    plus key helpers (git-remote-http, git-remote-https) needed for HTTPS clones."""
+    print("\n  [git]")
+    deb = download_deb("git", index)
+    if deb is None:
+        return False
+    tar_bytes = extract_deb(deb)
+    if tar_bytes is None:
+        print("  ⚠ Could not extract git deb")
+        return False
+
+    GIT_BINARY_MAP = {
+        "git":                "libgit.so",
+        "git-remote-https":   "libgit-remote-https.so",
+        "git-remote-http":    "libgit-remote-http.so",
+        "git-receive-pack":   "libgit-receive-pack.so",
+        "git-upload-pack":    "libgit-upload-pack.so",
+        "git-upload-archive": "libgit-upload-archive.so",
+    }
+
+    extracted: list[str] = []
+    with tarfile.open(fileobj=io.BytesIO(tar_bytes)) as tf:
+        for m in tf.getmembers():
+            if m.issym() or m.islnk():
+                continue
+            if m.size < 1024:
+                continue
+            bname = Path(m.name).name
+            if bname not in GIT_BINARY_MAP:
+                continue
+            f = tf.extractfile(m)
+            if not f:
+                continue
+            content = f.read()
+            if content[:4] != b"\x7fELF":
+                continue
+            dest_name = GIT_BINARY_MAP[bname]
+            out = dest / dest_name
+            out.write_bytes(content)
+            kb = len(content) // 1024
+            print(f"    ✅ {dest_name} ({kb} KB)")
+            patch_sonames(out)
+            extracted.append(dest_name)
+
+    if not extracted:
+        print("  ⚠ No git binaries found in package")
+        return False
+    return True
+
+
+def extract_git_templates(index: dict, assets_dest: Path) -> bool:
+    """Extract git template files into app assets directory."""
+    print("\n  [git templates]")
+    deb = download_deb("git", index)
+    if deb is None:
+        return False
+    tar_bytes = extract_deb(deb)
+    if tar_bytes is None:
+        return False
+
+    templates_found = 0
+    assets_dest.mkdir(parents=True, exist_ok=True)
+
+    with tarfile.open(fileobj=io.BytesIO(tar_bytes)) as tf:
+        for m in tf.getmembers():
+            if "share/git-core/templates" not in m.name:
+                continue
+            if m.issym() or m.islnk():
+                continue
+            idx = m.name.find("templates/")
+            if idx < 0:
+                continue
+            rel = m.name[idx + len("templates/"):]
+            if not rel:
+                continue
+            out = assets_dest / rel
+            if m.isdir():
+                out.mkdir(parents=True, exist_ok=True)
+                continue
+            out.parent.mkdir(parents=True, exist_ok=True)
+            f = tf.extractfile(m)
+            if f:
+                out.write_bytes(f.read())
+                templates_found += 1
+
+    if templates_found > 0:
+        print(f"    ✅ Extracted {templates_found} template files → {assets_dest.relative_to(PROJECT_ROOT)}")
+        return True
+    else:
+        print("  ⚠ No template files found in git package")
+        return False
+
+
+def setup_abi(abi: str, force: bool) -> None:
+    """Download and stage all native libs for a single ABI."""
+    dest_dir = get_dest_dir(abi)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    print(f"\n{'=' * 50}")
+    print(f"  Setting up: {abi}")
+    print(f"{'=' * 50}")
+
+    libnode = dest_dir / "libnode.so"
+    if libnode.exists() and not force:
+        print(f"ℹ  {libnode.relative_to(PROJECT_ROOT)} already exists.")
+        print("   Use --force to re-download.")
+        verify_deps(dest_dir)
+        return
+
+    index = load_termux_index_for_abi(abi)
+
+    print("\n📦 Downloading packages...")
+    for pkg_name, wanted_files in PACKAGES:
+        print(f"\n  [{pkg_name}]")
+        deb = download_deb(pkg_name, index)
+        if deb is None:
+            continue
+        tar_bytes = extract_deb(deb)
+        if tar_bytes is None:
+            print(f"  ⚠ Could not extract data.tar from {pkg_name}")
+            continue
+        extracted = extract_files_from_tar(tar_bytes, wanted_files, dest_dir)
+        if not extracted:
+            print(f"  ⚠ No target files found in {pkg_name}")
+            continue
+        for fname in extracted:
+            patch_sonames(dest_dir / fname)
+
+    print(f"\n  [libc++_shared.so]")
+    if not fetch_termux_libcxx(index, dest_dir):
+        print("  ⚠ Could not fetch Termux libc++_shared.so — vtable errors may occur at runtime")
+
+    # git binaries (ABI-specific)
+    print("\n📦 Downloading git binary...")
+    extract_git_binary(index, dest_dir)
+
+    # git templates are ABI-independent — extract only once
+    if not GIT_TEMPLATES_DIR.exists() or not any(GIT_TEMPLATES_DIR.iterdir()):
+        extract_git_templates(index, GIT_TEMPLATES_DIR)
+    else:
+        print("\n  [git templates] Already extracted — skipping.")
+
+    verify_deps(dest_dir)
+
+    rel = dest_dir.relative_to(PROJECT_ROOT)
+    print(f"""
+══════════════════════════════════════════
+✅  Native libs staged in:
+    {rel}
+══════════════════════════════════════════""")
 
 
 def download_deb(pkg_name: str, index: dict) -> bytes | None:
@@ -415,55 +616,33 @@ def verify_deps(dest: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Download & stage native libs for STANDROID (arm64-v8a)"
+        description="Download & stage native libs for STANDROID"
+    )
+    parser.add_argument(
+        "--abi",
+        default="arm64-v8a",
+        choices=list(ABI_TO_ARCH.keys()) + ["all"],
+        help="Target ABI (default: arm64-v8a). Use 'all' for both arm64-v8a and x86_64."
     )
     parser.add_argument("--force", action="store_true",
                         help="Re-download even if files already exist")
     args = parser.parse_args()
 
-    DEST_DIR.mkdir(parents=True, exist_ok=True)
+    abis = list(ABI_TO_ARCH.keys()) if args.abi == "all" else [args.abi]
 
-    libnode = DEST_DIR / "libnode.so"
-    if libnode.exists() and not args.force:
-        print(f"ℹ  {libnode.relative_to(PROJECT_ROOT)} already exists.")
-        print("   Use --force to re-download everything.")
-        verify_deps(DEST_DIR)
-        return
+    for abi in abis:
+        setup_abi(abi, args.force)
 
-    index = load_termux_index()
-
-    print("\n📦 Downloading packages...")
-    for pkg_name, wanted_files in PACKAGES:
-        print(f"\n  [{pkg_name}]")
-        deb = download_deb(pkg_name, index)
-        if deb is None:
-            continue
-        tar_bytes = extract_deb(deb)
-        if tar_bytes is None:
-            print(f"  ⚠ Could not extract data.tar from {pkg_name}")
-            continue
-        extracted = extract_files_from_tar(tar_bytes, wanted_files, DEST_DIR)
-        if not extracted:
-            print(f"  ⚠ No target files found in {pkg_name}")
-            continue
-        for fname in extracted:
-            patch_sonames(DEST_DIR / fname)
-
-    print(f"\n  [libc++_shared.so]")
-    if not fetch_termux_libcxx(index, DEST_DIR):
-        print("  ⚠ Could not fetch Termux libc++_shared.so — vtable errors may occur at runtime")
-
-    verify_deps(DEST_DIR)
-
-    rel = DEST_DIR.relative_to(PROJECT_ROOT)
     print(f"""
 ══════════════════════════════════════════
-✅  Native libs staged in:
-    {rel}
+Next steps — build with Gradle:
+    ./gradlew assembleArmDebug    # ARM APK  (arm64-v8a + armeabi-v7a)
+    ./gradlew assembleX86Debug    # x86 APK  (x86_64)
+    ./gradlew assembleDebug       # both
 
-Next steps:
-    ./gradlew :app:assembleDebug
-    adb install -r app/build/outputs/apk/debug/app-debug.apk
+Install:
+    adb install -r app/build/outputs/apk/arm/debug/app-arm-debug.apk
+    adb install -r app/build/outputs/apk/x86/debug/app-x86-debug.apk
 ══════════════════════════════════════════""")
 
 
