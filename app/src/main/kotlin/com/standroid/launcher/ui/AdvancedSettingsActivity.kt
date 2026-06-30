@@ -20,6 +20,8 @@ import com.standroid.launcher.databinding.ActivityAdvancedSettingsBinding
 import com.standroid.launcher.service.STForegroundService
 import com.standroid.launcher.setup.NpmInstaller
 import com.standroid.launcher.setup.STInstaller
+import com.standroid.launcher.setup.ExtensionPatcher
+
 import com.standroid.launcher.util.AppLogger
 import com.standroid.launcher.util.AppPrefs
 import com.standroid.launcher.util.ZipExtractor
@@ -689,6 +691,17 @@ class AdvancedSettingsActivity : AppCompatActivity() {
                     lp.appendLog("Removing node_modules from ZIP...")
                     nodeModules.deleteRecursively()
                 }
+
+                // Apply extension patch after ZIP extraction
+                lp.appendLog("Applying Android compatibility patches...")
+                
+                val patcher = ExtensionPatcher(this@AdvancedSettingsActivity)
+                val patchOk = patcher.applyPatch(stDir)
+                if (!patchOk) {
+                    AppLogger.w(TAG, "Extension patch failed — extension updates may not work")
+                }
+
+
 
                 // Restore data/ if backed up
                 if (backupDir.exists()) {

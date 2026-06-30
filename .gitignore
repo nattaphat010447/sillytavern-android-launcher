@@ -23,7 +23,7 @@ app/libs/
 
 # ── SillyTavern bundled assets (not used; downloaded at runtime) ──────────────
 app/src/main/assets/SillyTavern.zip
-app/src/main/assets/
+app/src/main/assets/git-templates
 
 # ── Kotlin compiler sessions ──────────────────────────────────────────────────
 .kotlin/

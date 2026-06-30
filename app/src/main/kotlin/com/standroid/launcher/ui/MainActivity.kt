@@ -11,6 +11,7 @@ import androidx.lifecycle.lifecycleScope
 import com.standroid.launcher.R
 import com.standroid.launcher.databinding.ActivityMainBinding
 import com.standroid.launcher.service.STForegroundService
+import com.standroid.launcher.setup.ExtensionPatcher
 import com.standroid.launcher.setup.NpmInstaller
 import com.standroid.launcher.util.AppLogger
 import com.standroid.launcher.util.AppPrefs
@@ -101,6 +102,14 @@ class MainActivity : AppCompatActivity() {
             launchServer()
         }
 
+        // Apply extension patch on every startup (idempotent — skips instantly if already patched).
+        // This ensures users upgrading from older versions get the patch without needing
+        // a fresh install or an auto-update cycle.
+        lifecycleScope.launch(Dispatchers.IO) {
+            val patcher = ExtensionPatcher(this@MainActivity)
+            patcher.applyPatch(File(filesDir, "SillyTavern"))
+        }
+
         // Decide whether to auto-update before enabling Start
         if (AppPrefs.autoUpdateOnStartup && Network.isConnected(this)) {
             runAutoUpdate()
@@ -175,7 +184,17 @@ class MainActivity : AppCompatActivity() {
                             .setRef("origin/staging")
                             .call()
 
-                        // ── Step 4: npm install ────────────────────────
+                        // ── Step 4: Re-apply extension patch ───────────
+                        // git reset --hard overwrites extensions.js back to the original
+                        // (simpleGit-based), so the STANDROID patch must be re-applied
+                        // after every update to keep extension updates working on Android.
+                        val patcher = ExtensionPatcher(this@MainActivity)
+                        val patchOk = patcher.applyPatch(stDir)
+                        if (!patchOk) {
+                            AppLogger.w(TAG, "Extension patch failed after update — extension updates may not work")
+                        }
+
+                        // ── Step 5: npm install ────────────────────────
                         withContext(Dispatchers.Main) {
                             setStatus("⇣ Installing dependencies…", StatusStyle.LOADING)
                         }

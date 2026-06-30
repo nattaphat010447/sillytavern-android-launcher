@@ -1,4 +1,4 @@
-package com.standroid.launcher.service
+﻿package com.standroid.launcher.service
 
 import android.content.Context
 import com.standroid.launcher.util.AppLogger
@@ -156,11 +156,13 @@ class NodeRunner(private val ctx: Context) {
                     // This is less secure but ensures Extension Update works.
                     // TODO: Bundle cacert.pem in assets for proper cert validation
                     put("GIT_SSL_NO_VERIFY", "false")
-                    put("GIT_CONFIG_COUNT", "2")
+                    put("GIT_CONFIG_COUNT", "3")
                     put("GIT_CONFIG_KEY_0", "http.sslCAPath")
                     put("GIT_CONFIG_VALUE_0", systemCaDir)
                     put("GIT_CONFIG_KEY_1", "http.sslVerify")
                     put("GIT_CONFIG_VALUE_1", "true")
+                    put("GIT_CONFIG_KEY_2", "pull.rebase")
+                    put("GIT_CONFIG_VALUE_2", "false")
                 }
                 putAll(env)
             }

@@ -5,6 +5,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Unreleased]
+
+---
+
+## [0.7.0] — 2026-07-01
+
+### Fixed
+- **Extension Update "refusing to merge unrelated histories"** — Extension updates now use fetch + force-reset (`git fetch && git reset --hard origin/<branch>`) instead of `git pull`, eliminating merge failures when local and remote histories have diverged (e.g. after restoring from a backup ZIP)
+- **Extension patch not applied on fresh install** — `ExtensionPatcher` previously ran a Node.js script to patch `extensions.js`, but Node is not available immediately after `git clone` (before `npm install`). Rewrote the patcher to use pure Kotlin string replacement with asset templates — no Node dependency, runs correctly at every install stage
+- **Extension patch not applied for v0.6.0 upgraders** — Patch is now applied on every app startup via a fire-and-forget coroutine in `MainActivity.proceed()`; idempotent, skips in <1 ms if already patched
+
+### Technical
+- `ExtensionPatcher.kt` fully rewritten — Kotlin regex + `Regex.escapeReplacement()` with 6 JS template files instead of a spawned Node process
+- JS template files added to `assets/patches/templates/`: `imports.js`, `check-up-to-date.js`, `update-route.js`, `branches-route.js`, `switch-route.js`, `version-route.js`
+
+---
+
 ## [0.6.0] — 2026-06-06
 
 ### Added

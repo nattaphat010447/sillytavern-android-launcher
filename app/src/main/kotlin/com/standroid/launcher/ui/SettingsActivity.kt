@@ -15,6 +15,8 @@ import androidx.lifecycle.lifecycleScope
 import com.standroid.launcher.databinding.ActivitySettingsBinding
 import com.standroid.launcher.setup.NpmInstaller
 import com.standroid.launcher.setup.STInstaller
+import com.standroid.launcher.setup.ExtensionPatcher
+
 import com.standroid.launcher.util.AppLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -110,6 +112,14 @@ class SettingsActivity : AppCompatActivity() {
                         .setMode(ResetCommand.ResetType.HARD)
                         .setRef("origin/staging")
                         .call()
+                    // Apply extension patch after git reset
+                    updateProgressDialog("Applying Android compatibility patches...")
+                    
+                    val patcher = ExtensionPatcher(this@SettingsActivity)
+                    val patchOk = patcher.applyPatch(stDir)
+                    if (!patchOk) {
+                        AppLogger.w(TAG, "Extension patch failed after update — extension updates may not work")
+                    }
 
                     updateProgressDialog("Installing new dependencies (npm install)...")
                     // 3. Run NPM Install
