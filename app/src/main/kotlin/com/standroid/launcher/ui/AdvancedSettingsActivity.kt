@@ -91,6 +91,11 @@ class AdvancedSettingsActivity : AppCompatActivity() {
             showConfigEditor()
         }
 
+        // ── File Browser ──────────────────────────────────────────────
+        binding.rowFileBrowser.setOnClickListener {
+            startActivity(Intent(this, FileExplorerActivity::class.java))
+        }
+
         // ── Reinstall Dependencies ────────────────────────────────────
         binding.rowReinstallDeps.setOnClickListener {
             styledDialog()

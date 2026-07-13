@@ -281,6 +281,7 @@ class STForegroundService : Service() {
                 "--no-open"           // localhost only — no browser launch
             )
 
+            healWebpackCache(stDir)
             patchConfig(stDir)
 
             // NODE_COMPILE_CACHE — cache compiled bytecode across restarts for faster startup
@@ -355,6 +356,42 @@ class STForegroundService : Service() {
     }
 
     // ── Helpers ───────────────────────────────────────────────────────
+
+    /**
+     * Removes stale webpack cache directories before the server starts.
+     *
+     * SillyTavern caches its compiled frontend bundle at:
+     *   `data/_webpack/<hash>/output/lib.js`
+     *
+     * If the process was killed mid-compile, the hash directory exists but
+     * `output/lib.js` is absent or zero bytes → ENOENT on next boot.
+     *
+     * This function scans every hash directory and deletes only the ones
+     * where `lib.js` is missing or empty. Healthy cache dirs are left alone
+     * so there is no startup-time penalty on normal restarts.
+     */
+    private fun healWebpackCache(stDir: File) {
+        val webpackRoot = File(stDir, "data/_webpack")
+        if (!webpackRoot.exists() || !webpackRoot.isDirectory) return
+
+        val hashDirs = webpackRoot.listFiles { f -> f.isDirectory } ?: return
+        var healed = 0
+
+        for (hashDir in hashDirs) {
+            val libJs = File(hashDir, "output/lib.js")
+            val broken = !libJs.exists() || libJs.length() == 0L
+            if (broken) {
+                val ok = hashDir.deleteRecursively()
+                AppLogger.w(TAG, "Removed stale webpack cache '${hashDir.name}' (lib.js missing/empty, deleted=$ok)")
+                if (ok) healed++
+            }
+        }
+
+        if (healed > 0)
+            AppLogger.i(TAG, "Webpack cache healed: removed $healed stale director${if (healed == 1) "y" else "ies"}")
+        else
+            AppLogger.d(TAG, "Webpack cache OK — nothing to heal")
+    }
 
     /** Returns total device RAM in MB. */
     private fun totalRamMb(): Long {

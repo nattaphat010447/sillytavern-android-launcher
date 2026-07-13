@@ -12,6 +12,7 @@ coroutines     = "1.9.0"
 nodejsMobile   = "0.4.3"
 swiperefreshlayout = "1.1.0"
 splashscreen   = "1.0.1"
+commonsCompress = "1.27.1"
 
 [libraries]
 androidx-core-ktx            = { group = "androidx.core",               name = "core-ktx",            version.ref = "coreKtx"          }
@@ -26,6 +27,7 @@ kotlinx-coroutines-android   = { group = "org.jetbrains.kotlinx",       name = "
 nodejs-mobile                = { group = "com.janeasystems.rn_nodejs_mobile", name = "nodejs-mobile-android", version.ref = "nodejsMobile" }
 androidx-swiperefreshlayout  = { group = "androidx.swiperefreshlayout",       name = "swiperefreshlayout",   version.ref = "swiperefreshlayout" }
 androidx-splashscreen        = { group = "androidx.core",                      name = "core-splashscreen",    version.ref = "splashscreen"       }
+commons-compress             = { group = "org.apache.commons",                 name = "commons-compress",     version.ref = "commonsCompress"    }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp"    }

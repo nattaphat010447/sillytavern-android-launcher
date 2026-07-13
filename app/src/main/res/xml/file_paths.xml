@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Exposes cacheDir/exports/ so FileProvider can hand URIs to other apps -->
+    <cache-path name="exported_zips" path="exports/" />
+    <!-- Exposes filesDir/SillyTavern/ for Intent.ACTION_VIEW on arbitrary files -->
+    <files-path name="st_files" path="SillyTavern/" />
+</paths>

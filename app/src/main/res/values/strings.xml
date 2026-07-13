@@ -30,6 +30,10 @@
     <string name="import_user_data_failed">Import failed. Please check the ZIP file.</string>
     <string name="import_user_data_invalid_zip">Invalid backup ZIP. Must contain characters/, chats/, or settings.json</string>
     
+    <!-- File Browser -->
+    <string name="file_browser_title">File Browser</string>
+    <string name="file_browser_desc">Browse and edit any file in the SillyTavern directory</string>
+
     <!-- Replace SillyTavern -->
     <string name="replace_st_title">Replace SillyTavern from ZIP</string>
     <string name="replace_st_desc">Replace entire installation with your own SillyTavern ZIP</string>

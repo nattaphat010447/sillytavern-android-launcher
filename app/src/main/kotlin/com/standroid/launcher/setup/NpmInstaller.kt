@@ -8,11 +8,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
+import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
+import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
-import java.util.zip.GZIPInputStream
+import java.nio.file.Files
+import java.nio.file.Path
 
 /**
  * Runs `npm install --omit=dev` inside the SillyTavern directory using the
@@ -30,7 +33,7 @@ class NpmInstaller(private val ctx: Context) {
     private val nodeRunner = NodeRunner(ctx)
 
     /**
-     * Runs `npm ci` in [stDir].
+     * Runs `npm install --omit=dev` in [stDir].
      * Streams output lines to [onLog].
      *
      * @return true on success, false if all attempts fail.
@@ -48,8 +51,6 @@ class NpmInstaller(private val ctx: Context) {
             AppLogger.i(TAG, "npm install — attempt ${attempt + 1}/$maxAttempts")
             onLog("npm install — attempt ${attempt + 1}/$maxAttempts")
 
-            // args = [<npm-cli.js or "npm">, install, ...]
-            // Using official update script flags
             val args = buildList {
                 add(npmScript)
                 addAll(listOf(
@@ -57,7 +58,7 @@ class NpmInstaller(private val ctx: Context) {
                     "--no-save",
                     "--no-audit",
                     "--no-fund",
-                    "--loglevel=http",   // emit HTTP fetch lines so UI can show live package downloads
+                    "--loglevel=http",
                     "--no-progress",
                     "--omit=dev",
                     "--ignore-scripts"
@@ -74,15 +75,12 @@ class NpmInstaller(private val ctx: Context) {
                 return@withContext false
             }
 
-            // runInterruptible makes proc.waitFor() respond to coroutine cancellation.
-            // If the coroutine is cancelled, the thread is interrupted, waitFor() throws
-            // InterruptedException, and we destroy the process before re-throwing.
             val exitCode = try {
                 runInterruptible { proc.waitFor() }
             } catch (e: CancellationException) {
                 proc.destroy()
                 nodeRunner.setLogListener(null)
-                throw e   // propagate so the caller's catch(CancellationException) fires
+                throw e
             }
             nodeRunner.setLogListener(null)
 
@@ -94,7 +92,7 @@ class NpmInstaller(private val ctx: Context) {
 
             val backoffMs = (2.0.pow(attempt) * 5000).toLong()
             AppLogger.w(TAG, "npm install failed (exit $exitCode) — retry in ${backoffMs}ms")
-            onLog("Install failed (attempt ${attempt + 1}). Retrying in ${backoffMs / 1000}s…")
+            onLog("Install failed (attempt ${attempt + 1}). Retrying in ${backoffMs / 1000}s\u2026")
             delay(backoffMs)
         }
 
@@ -109,49 +107,98 @@ class NpmInstaller(private val ctx: Context) {
      *
      * Priority:
      * 1. npm vendored inside the ST repository (after first successful install)
-     * 2. npm previously cached in filesDir from a prior download
+     * 2. npm previously cached in filesDir — only if integrity check passes
      * 3. Download npm from the npm registry and cache it in filesDir
      * 4. Fall back to bare "npm" on PATH (unlikely to work on stock Android)
-     *
-     * This function performs blocking IO and must be called from an IO coroutine.
      */
     private fun resolveNpmScript(stDir: File, onLog: (String) -> Unit): String {
         // 1. Vendored npm inside the ST repository tree
         val vendored = File(stDir, "node_modules/npm/bin/npm-cli.js")
         if (vendored.exists()) return vendored.absolutePath
 
-        // 2. npm previously downloaded and cached
-        val cached = File(ctx.filesDir, "npm_pkg/package/bin/npm-cli.js")
-        if (cached.exists()) return cached.absolutePath
+        // 2. Previously downloaded and cached — verify integrity before trusting it
+        val npmPkgDir = File(ctx.filesDir, "npm_pkg")
+        val cached = File(npmPkgDir, "package/bin/npm-cli.js")
+        if (cached.exists()) {
+            if (isNpmCacheIntact(npmPkgDir)) {
+                AppLogger.i(TAG, "Using cached npm at ${cached.absolutePath}")
+                return cached.absolutePath
+            } else {
+                AppLogger.w(TAG, "Cached npm_pkg failed integrity check — deleting and re-downloading")
+                onLog("Cached npm package appears corrupt. Re-downloading\u2026")
+                npmPkgDir.deleteRecursively()
+            }
+        }
 
-        // 3. Download npm from npm registry
-        AppLogger.i(TAG, "npm-cli.js not found — downloading npm from registry…")
-        onLog("Downloading npm package manager…")
+        // 3. Download from npm registry
+        AppLogger.i(TAG, "npm-cli.js not found — downloading npm from registry\u2026")
+        onLog("Downloading npm package manager\u2026")
         val downloaded = downloadNpmFromRegistry(onLog)
         if (downloaded != null) return downloaded
 
-        // 4. Last resort: hope PATH has npm (Termux / dev environment)
+        // 4. Last resort
         AppLogger.w(TAG, "npm download failed — falling back to PATH npm")
         return "npm"
     }
 
     /**
+     * Checks that the extracted npm package:
+     *  a) was extracted by the current extractor version (version stamp), AND
+     *  b) contains the nested modules that Node.js actually requires at runtime.
+     *
+     * The version stamp (`.extract_version = 3`) is written after every successful
+     * extraction with the TarArchiveInputStream-based extractor.  Any cache missing
+     * the stamp or carrying an older version number is treated as corrupt and will
+     * be deleted so a fresh download runs.
+     */
+    private fun isNpmCacheIntact(npmPkgDir: File): Boolean {
+        // Increment when the extractor changes in a way that affects on-disk layout.
+        val EXTRACT_VERSION = 3
+        val stampFile = File(npmPkgDir, ".extract_version")
+        val stampOk = runCatching {
+            stampFile.readText().trim().toInt() == EXTRACT_VERSION
+        }.getOrDefault(false)
+        if (!stampOk) {
+            AppLogger.w(TAG, "npm cache stamp missing or outdated — treating as corrupt")
+            return false
+        }
+
+        val nodeModules = File(npmPkgDir, "package/node_modules")
+        if (!nodeModules.isDirectory) return false
+
+        // Verify the exact nested paths that Node.js resolves at runtime per the
+        // MODULE_NOT_FOUND require stack in the error log:
+        //   @npmcli/installed-package-contents/node_modules/npm-bundled
+        //     → require('npm-normalize-package-bin')
+        //   which Node looks up in:
+        //     @npmcli/installed-package-contents/node_modules/npm-normalize-package-bin
+        val criticalPaths = listOf(
+            "@npmcli/installed-package-contents/node_modules/npm-normalize-package-bin",
+            "@npmcli/installed-package-contents/node_modules/npm-bundled",
+            "@npmcli/installed-package-contents"
+        )
+        return criticalPaths.all { rel ->
+            val dir = File(nodeModules, rel)
+            // toRealPath() follows symlinks — throws if the target is broken or missing
+            val ok = runCatching { dir.toPath().toRealPath() }.isSuccess && dir.exists()
+            if (!ok) AppLogger.w(TAG, "npm integrity: missing $rel")
+            ok
+        }
+    }
+
+    /**
      * Downloads the latest npm tarball from the public npm registry and extracts
      * it to [ctx.filesDir]/npm_pkg/.  Returns the path to npm-cli.js, or null.
-     *
-     * The registry tarball unpacks to   package/bin/npm-cli.js  inside the archive,
-     * so the cached path is   filesDir/npm_pkg/package/bin/npm-cli.js.
      */
     private fun downloadNpmFromRegistry(onLog: (String) -> Unit): String? {
         return try {
-            // --- 1. Fetch tarball URL from registry metadata ---
+            // 1. Fetch tarball URL from registry metadata
             val metaConn = URL("https://registry.npmjs.org/npm/latest")
                 .openConnection() as HttpURLConnection
             metaConn.connectTimeout = 15_000
             metaConn.readTimeout   = 30_000
             val meta = metaConn.inputStream.bufferedReader().readText()
 
-            // Parse "tarball":"<url>" with a simple index search (no JSON library needed)
             val key   = "\"tarball\":\""
             val start = meta.indexOf(key)
             if (start < 0) {
@@ -159,26 +206,26 @@ class NpmInstaller(private val ctx: Context) {
                 return null
             }
             val urlStart  = start + key.length
-            val urlEnd    = meta.indexOf('"', urlStart)
-            val tarballUrl = meta.substring(urlStart, urlEnd)
+            val tarballUrl = meta.substring(urlStart, meta.indexOf('"', urlStart))
             AppLogger.i(TAG, "npm tarball: $tarballUrl")
 
-            // --- 2. Download tarball ---
-            onLog("Downloading npm from $tarballUrl …")
+            // 2. Download tarball
+            onLog("Downloading npm from $tarballUrl \u2026")
             val dlConn = URL(tarballUrl).openConnection() as HttpURLConnection
             dlConn.connectTimeout = 15_000
             dlConn.readTimeout   = 120_000
             val bytes = dlConn.inputStream.readBytes()
             AppLogger.i(TAG, "npm tarball downloaded: ${bytes.size} bytes")
 
-            // --- 3. Extract .tgz ---
+            // 3. Extract .tgz
             val destDir = File(ctx.filesDir, "npm_pkg")
-            onLog("Extracting npm…")
+            onLog("Extracting npm\u2026")
             extractTgz(bytes, destDir)
 
-            // --- 4. Verify ---
+            // 4. Verify and stamp
             val cliJs = File(destDir, "package/bin/npm-cli.js")
             if (cliJs.exists()) {
+                runCatching { File(destDir, ".extract_version").writeText("3") }
                 AppLogger.i(TAG, "npm cached at ${cliJs.absolutePath}")
                 onLog("npm ready.")
                 cliJs.absolutePath
@@ -193,79 +240,90 @@ class NpmInstaller(private val ctx: Context) {
     }
 
     /**
-     * Extracts a .tgz archive ([data]) into [destDir].
+     * Extracts a .tgz archive ([data]) into [destDir] using Apache Commons Compress.
      *
-     * Supports regular files and directories; symlinks are skipped.
-     * Uses only standard Java IO — no external tar library needed.
+     * Commons Compress handles all tar format variants correctly:
+     *  - **PAX extended headers** (typeFlag `'x'`/`'g'`) — used by npm's `tar` module
+     *    for paths longer than 100 characters.  The hand-rolled parser silently
+     *    truncated these, causing `MODULE_NOT_FOUND` for deeply-nested modules.
+     *  - **GNU LongLink** (`@LongLink`) — older GNU long-name extension
+     *  - **USTAR prefix field** — classic 155+1+100 byte split
+     *  - **Symbolic links** — `entry.isSymbolicLink` → `createSymlinkSafe()`
+     *
+     * Security: symlink targets that escape [destDir] are skipped.
      */
     private fun extractTgz(data: ByteArray, destDir: File) {
         destDir.mkdirs()
-        GZIPInputStream(ByteArrayInputStream(data)).use { gz ->
-            val hdr = ByteArray(512)
+        val destPath: Path = destDir.canonicalFile.toPath()
 
-            while (true) {
-                // Read exactly 512-byte header
-                var off = 0
-                while (off < 512) {
-                    val r = gz.read(hdr, off, 512 - off)
-                    if (r < 0) return
-                    off += r
-                }
-                // Two consecutive all-zero blocks = end-of-archive
-                if (hdr.all { it == 0.toByte() }) break
-
-                val name      = hdr.sliceArray(0..99)
-                    .toString(Charsets.UTF_8).trimEnd('\u0000')
-                // tar size field is octal digits + spaces/nulls — keep only '0'..'7'
-                val sizeOctal = hdr.sliceArray(124..135)
-                    .toString(Charsets.UTF_8).filter { it in '0'..'7' }
-                val typeFlag  = hdr[156].toInt().toChar()
-                val fileSize  = if (sizeOctal.isEmpty()) 0L else sizeOctal.toLong(8)
-
-                // Blocks used by this entry (for alignment skipping)
-                val blockBytes = ((fileSize + 511) / 512) * 512
+        TarArchiveInputStream(
+            GzipCompressorInputStream(ByteArrayInputStream(data))
+        ).use { tar ->
+            var entry = tar.nextEntry
+            while (entry != null) {
+                val entryName = entry.name
 
                 when {
-                    typeFlag == '5' || name.endsWith('/') -> {
-                        // Directory
-                        File(destDir, name).mkdirs()
+                    entry.isDirectory -> {
+                        File(destDir, entryName).mkdirs()
                     }
-                    typeFlag == '0' || typeFlag == '\u0000' || typeFlag == '7' -> {
-                        // Regular file
-                        val outFile = File(destDir, name)
-                        outFile.parentFile?.mkdirs()
-                        var remaining = fileSize
-                        outFile.outputStream().use { out ->
-                            val buf = ByteArray(8192)
-                            while (remaining > 0) {
-                                val toRead = minOf(buf.size.toLong(), remaining).toInt()
-                                val r = gz.read(buf, 0, toRead)
-                                if (r < 0) return
-                                out.write(buf, 0, r)
-                                remaining -= r
-                            }
+                    entry.isSymbolicLink -> {
+                        // linkName is the symlink target (may be relative)
+                        if (entryName.isNotEmpty() && entry.linkName.isNotEmpty()) {
+                            createSymlinkSafe(destPath, entryName, entry.linkName)
                         }
-                        // Skip padding to next 512-byte boundary
-                        val padding = blockBytes - fileSize
-                        if (padding > 0) skipFully(gz, padding)
                     }
                     else -> {
-                        // Symlink, hard-link, etc — skip file data
-                        if (blockBytes > 0) skipFully(gz, blockBytes)
+                        // Regular file (also catches hard links by copying content)
+                        val outFile = File(destDir, entryName)
+                        // Path-traversal guard
+                        if (!outFile.canonicalPath.startsWith(destDir.canonicalPath + File.separator) &&
+                            outFile.canonicalPath != destDir.canonicalPath) {
+                            AppLogger.w(TAG, "Skipping entry outside destDir: $entryName")
+                            entry = tar.nextEntry
+                            continue
+                        }
+                        outFile.parentFile?.mkdirs()
+                        outFile.outputStream().use { out -> tar.copyTo(out) }
                     }
                 }
+                entry = tar.nextEntry
             }
         }
     }
 
-    /** Reads and discards exactly [n] bytes from [stream]. */
-    private fun skipFully(stream: GZIPInputStream, n: Long) {
-        val buf = ByteArray(4096)
-        var remaining = n
-        while (remaining > 0) {
-            val r = stream.read(buf, 0, minOf(buf.size.toLong(), remaining).toInt())
-            if (r < 0) return
-            remaining -= r
+    /**
+     * Creates a symlink at [destRoot]/[entryName] pointing to [linkTarget].
+     *
+     * [linkTarget] may be relative (e.g. `../foo/index.js`), resolved relative
+     * to the symlink's own parent — same semantics as the OS at runtime.
+     *
+     * Security: symlinks whose resolved target escapes [destRoot] are skipped.
+     */
+    private fun createSymlinkSafe(destRoot: Path, entryName: String, linkTarget: String) {
+        runCatching {
+            val linkPath: Path = destRoot.resolve(entryName).normalize()
+
+            if (!linkPath.startsWith(destRoot)) {
+                AppLogger.w(TAG, "Skipping symlink outside destDir: $entryName")
+                return
+            }
+
+            linkPath.parent?.let { Files.createDirectories(it) }
+
+            val resolvedTarget: Path = (linkPath.parent
+                ?.resolve(linkTarget) ?: destRoot.resolve(linkTarget)).normalize()
+
+            if (!resolvedTarget.startsWith(destRoot)) {
+                AppLogger.w(TAG, "Skipping symlink that escapes destDir: $entryName -> $linkTarget")
+                return
+            }
+
+            Files.deleteIfExists(linkPath)
+            Files.createSymbolicLink(linkPath, linkPath.fileSystem.getPath(linkTarget))
+            AppLogger.d(TAG, "Symlink: $entryName -> $linkTarget")
+        }.onFailure { e ->
+            AppLogger.w(TAG, "Failed to create symlink $entryName -> $linkTarget: ${e.message}")
         }
     }
 }

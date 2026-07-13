@@ -25,3 +25,11 @@
 
 # ── App classes used via reflection ───────────────────────────────────────────
 -keep class com.standroid.launcher.** { *; }
+
+# ── Apache Commons Compress ───────────────────────────────────────────────────
+# TarArchiveInputStream and GzipCompressorInputStream are used at runtime for
+# npm tarball extraction.  Commons Compress uses ServiceLoader for codec
+# registration, so we must keep the service files and relevant classes.
+-keep class org.apache.commons.compress.** { *; }
+-dontwarn org.apache.commons.compress.**
+-keepattributes ServiceLoader

@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/bg_deep">
+
+    <!-- ── Toolbar ─────────────────────────────────────────────────── -->
+    <androidx.appcompat.widget.Toolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:background="@color/bg_deep"
+        app:titleTextColor="@color/text_primary"
+        app:subtitleTextColor="@color/text_muted"
+        app:navigationIcon="@drawable/ic_arrow_back"
+        app:navigationContentDescription="Back">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnSave"
+            style="@style/Widget.STANDROID.Button"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="end"
+            android:layout_marginEnd="8dp"
+            android:text="Save"
+            android:textSize="13sp" />
+
+    </androidx.appcompat.widget.Toolbar>
+
+    <!-- ── Divider ─────────────────────────────────────────────────── -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/bg_card_stroke" />
+
+    <!-- ── Read-only banner (shown for binary / large files) ──────── -->
+    <TextView
+        android:id="@+id/tvReadOnlyBanner"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@color/bg_elevated"
+        android:text="⚠ Read-only — file is too large or binary"
+        android:textColor="@color/status_loading"
+        android:textSize="12sp"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp"
+        android:visibility="gone" />
+
+    <!-- ── Editor area ─────────────────────────────────────────────── -->
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fillViewport="true">
+
+        <EditText
+            android:id="@+id/etFileContent"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@null"
+            android:textColor="@color/text_primary"
+            android:textColorHint="@color/text_disabled"
+            android:textSize="13sp"
+            android:fontFamily="monospace"
+            android:padding="16dp"
+            android:inputType="textMultiLine|textNoSuggestions"
+            android:gravity="top|start"
+            android:scrollHorizontally="false"
+            android:importantForAutofill="no"
+            android:hint="(empty file)" />
+
+    </ScrollView>
+
+</LinearLayout>

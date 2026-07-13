@@ -9,6 +9,39 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.8.0] — 2026-07-14
+
+### Added
+- **File Explorer** — browse the entire SillyTavern directory tree from within the app
+  - Accessible from the main screen via a new "Files" button
+  - Breadcrumb navigation bar with tap-to-jump support
+  - Folders sort first; files sorted alphabetically
+  - Three-dot menu (⋮) and long-press → bottom sheet with Copy / View & Edit / Zip & Share / Delete
+  - Internal clipboard: Copy marks a file/folder; Paste button appears in the toolbar
+  - **Zip & Share** — zips any file or folder to `cacheDir/exports/` and opens the system share chooser
+  - Protected folders (`node_modules`, `.git`): shown with 🔒, navigable but Copy/Delete/Paste blocked
+- **File Editor** — full-screen in-place text editor for any file in SillyTavern
+  - Files > 1 MB or detected as binary → opened read-only with a banner automatically
+  - Dirty-state tracking: Save button highlights when unsaved changes exist
+  - "Discard changes?" confirmation dialog on back
+  - Saving `config.yaml` while the server is running → offers to restart SillyTavern immediately
+- **Image Preview** — in-app viewer for PNG, JPG, WEBP, GIF, BMP files
+  - Two-pass `BitmapFactory` decode with `inSampleSize` downscaling (capped at 2048 px) to prevent OOM
+  - Falls back to system image viewer if decode fails
+
+### Fixed
+- **Non-text files opening as garbled text** — binary files (images, audio, PDFs, etc.) no longer route to the text editor; images open in the built-in Image Preview, other binary files are handed off to Android's system viewer via `Intent.ACTION_VIEW`
+- **Startup crash with ENOENT webpack cache** — if the app was killed mid-compile, the next boot crashed with `ENOENT: no such file or directory, stat '...data/_webpack/<hash>/output/lib.js'`; `STForegroundService` now scans `data/_webpack/` before spawning Node.js and removes only stale hash-dirs (missing or zero-byte `lib.js`); healthy cache dirs are untouched
+
+### Technical
+- `FileExplorerActivity.kt` — new activity; routes file taps by type: directory → navigate, image → `ImagePreviewActivity`, text → `FileEditorActivity`, binary → `Intent.ACTION_VIEW` + `MimeTypeMap`; `isText()` falls back to null-byte sniff for unknown extensions
+- `FileEditorActivity.kt` — new activity; in-place read/write with 1 MB edit / 2 MB view limits
+- `ImagePreviewActivity.kt` — new activity; OOM-safe two-pass bitmap decode
+- `file_paths.xml` — added `<files-path name="st_files" path="SillyTavern/" />` for FileProvider URI access
+- `STForegroundService.healWebpackCache()` — condition-checked stale cache removal; runs before every server start
+
+---
+
 ## [0.7.0] — 2026-07-01
 
 ### Fixed
