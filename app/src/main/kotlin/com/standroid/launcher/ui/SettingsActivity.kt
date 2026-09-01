@@ -174,20 +174,22 @@ class SettingsActivity : AppCompatActivity() {
                 var processedBytes = 0L
                 var lastPercent = -1
 
-                contentResolver.openOutputStream(uri)?.use { outputStream ->
-                    ZipOutputStream(outputStream).use { zos ->
+                val outputStream = contentResolver.openOutputStream(uri)
+                    ?: throw IllegalStateException("Could not open output stream for URI — storage may be unavailable")
+                outputStream.use {
+                    ZipOutputStream(it).use { zos ->
                         for (file in filesToZip) {
                             val entryName = file.absolutePath.substringAfter(stDir.absolutePath + "/")
                             val zipEntry = ZipEntry(entryName)
                             zos.putNextEntry(zipEntry)
-                            
+
                             file.inputStream().use { fis ->
                                 val buffer = ByteArray(8192)
                                 var length: Int
                                 while (fis.read(buffer).also { length = it } >= 0) {
                                     zos.write(buffer, 0, length)
                                     processedBytes += length
-                                    
+
                                     if (totalBytes > 0) {
                                         val pct = ((processedBytes.toDouble() / totalBytes) * 100).toInt()
                                         if (pct != lastPercent && pct % 5 == 0) { // Update UI every 5%
@@ -201,7 +203,7 @@ class SettingsActivity : AppCompatActivity() {
                         }
                     }
                 }
-                
+
                 withContext(Dispatchers.Main) {
                     hideProgressDialog()
                     Toast.makeText(this@SettingsActivity, "Export successful!", Toast.LENGTH_LONG).show()

@@ -591,12 +591,23 @@ class WebViewActivity : AppCompatActivity() {
                         // Read blob directly from registry
                         const reader = new FileReader();
                         reader.onloadend = function() {
+                            if (!reader.result) {
+                                console.error('[Android] FileReader result is null — blob may be empty or unreadable');
+                                return;
+                            }
                             const base64 = reader.result.split(',')[1];
+                            if (!base64) {
+                                console.error('[Android] base64 is empty after split — blob has no content');
+                                return;
+                            }
                             AndroidBlobDownloader.onBase64DataReady(
                                 base64,
                                 filename,
                                 mimetype
                             );
+                        };
+                        reader.onerror = function() {
+                            console.error('[Android] FileReader error reading blob from registry:', reader.error);
                         };
                         reader.readAsDataURL(blob);
                     } else {
@@ -607,12 +618,23 @@ class WebViewActivity : AppCompatActivity() {
                             .then(fetchedBlob => {
                                 const reader = new FileReader();
                                 reader.onloadend = function() {
+                                    if (!reader.result) {
+                                        console.error('[Android] FileReader result is null — fetched blob may be empty or unreadable');
+                                        return;
+                                    }
                                     const base64 = reader.result.split(',')[1];
+                                    if (!base64) {
+                                        console.error('[Android] base64 is empty after split — fetched blob has no content');
+                                        return;
+                                    }
                                     AndroidBlobDownloader.onBase64DataReady(
                                         base64,
                                         filename,
                                         mimetype
                                     );
+                                };
+                                reader.onerror = function() {
+                                    console.error('[Android] FileReader error reading fetched blob:', reader.error);
                                 };
                                 reader.readAsDataURL(fetchedBlob);
                             })
@@ -663,12 +685,15 @@ class WebViewActivity : AppCompatActivity() {
      */
     private suspend fun saveBase64ToUri(uri: Uri, base64Data: String, mimetype: String) {
         try {
-            val bytes = Base64.decode(base64Data, Base64.DEFAULT)
-            
-            contentResolver.openOutputStream(uri)?.use { output ->
-                output.write(bytes)
+            if (base64Data.isEmpty()) {
+                throw IllegalStateException("Received empty base64 data — the file content could not be read from the blob")
             }
-            
+            val bytes = Base64.decode(base64Data, Base64.DEFAULT)
+
+            val output = contentResolver.openOutputStream(uri)
+                ?: throw IllegalStateException("Could not open output stream for URI — storage may be unavailable")
+            output.use { it.write(bytes) }
+
             withContext(Dispatchers.Main) {
                 Toast.makeText(
                     this@WebViewActivity,
@@ -677,7 +702,7 @@ class WebViewActivity : AppCompatActivity() {
                 ).show()
             }
             AppLogger.i(TAG, "Blob download completed: ${bytes.size} bytes")
-            
+
         } catch (e: Exception) {
             withContext(Dispatchers.Main) {
                 Toast.makeText(
@@ -717,10 +742,12 @@ class WebViewActivity : AppCompatActivity() {
             }
             
             // Write response body to URI
-            contentResolver.openOutputStream(uri)?.use { output ->
-                response.body?.byteStream()?.copyTo(output)
-            }
-            
+            val body = response.body
+                ?: throw IllegalStateException("HTTP response had no body")
+            val output = contentResolver.openOutputStream(uri)
+                ?: throw IllegalStateException("Could not open output stream for URI — storage may be unavailable")
+            output.use { body.byteStream().copyTo(it) }
+
             withContext(Dispatchers.Main) {
                 Toast.makeText(
                     this@WebViewActivity,
